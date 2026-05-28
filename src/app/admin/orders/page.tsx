@@ -73,6 +73,12 @@ export default function OrdersPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState("");
 
+  // State untuk bulk delete
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkError, setBulkError] = useState("");
+  const [bulkConfirmText, setBulkConfirmText] = useState("");
+
   const fetchOrders = async () => {
     try {
       setLoading(true);
@@ -126,6 +132,27 @@ export default function OrdersPage() {
     }
   };
 
+  const executeBulkDelete = async () => {
+    try {
+      setBulkLoading(true);
+      setBulkError("");
+      const res = await fetch("/api/admin/orders/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: statusFilter }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menghapus");
+      setShowBulkModal(false);
+      setBulkConfirmText("");
+      fetchOrders();
+    } catch (err: any) {
+      setBulkError(err.message || "Terjadi kesalahan");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   const filteredOrders = orders.filter((order) => {
     const matchSearch =
       search === "" ||
@@ -162,6 +189,20 @@ export default function OrdersPage() {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
+          {orders.length > 0 && (
+            <button
+              onClick={() => {
+                setBulkError("");
+                setBulkConfirmText("");
+                setShowBulkModal(true);
+              }}
+              className="inline-flex items-center gap-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 font-semibold px-4 py-2.5 rounded-xl transition-all duration-200 cursor-pointer text-sm"
+              title="Hapus semua order (sesuai filter)"
+            >
+              <Trash2 className="w-4 h-4" />
+              Hapus Semua
+            </button>
+          )}
           <Link
             href="/admin/orders/new"
             className="inline-flex items-center gap-2 bg-accent hover:bg-accent-dark text-white font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 cursor-pointer shadow-sm hover:shadow-md hover:shadow-accent/20 active:scale-[0.98] text-sm"
@@ -285,7 +326,7 @@ export default function OrdersPage() {
                 color: "text-slate-700",
                 bg: "bg-slate-50",
               };
-              const canCancelOrDelete = order.status !== "completed" && order.status !== "cancelled";
+              const canCancel = order.status !== "completed" && order.status !== "cancelled";
               return (
                 <Link
                   key={order.id}
@@ -340,8 +381,8 @@ export default function OrdersPage() {
                           {order.inspector_name}
                         </span>
                         {/* Tombol aksi cancel/delete */}
-                        {canCancelOrDelete && (
-                          <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <div className="flex items-center gap-1 mt-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          {canCancel && (
                             <button
                               onClick={(e) => openConfirmModal(order, "cancel", e)}
                               className="p-1.5 rounded-lg hover:bg-amber-50 text-text-tertiary hover:text-amber-600 transition-colors cursor-pointer"
@@ -349,15 +390,15 @@ export default function OrdersPage() {
                             >
                               <XCircle className="w-4 h-4" />
                             </button>
-                            <button
-                              onClick={(e) => openConfirmModal(order, "delete", e)}
-                              className="p-1.5 rounded-lg hover:bg-red-50 text-text-tertiary hover:text-red-600 transition-colors cursor-pointer"
-                              title="Hapus order"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        )}
+                          )}
+                          <button
+                            onClick={(e) => openConfirmModal(order, "delete", e)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-text-tertiary hover:text-red-600 transition-colors cursor-pointer"
+                            title="Hapus order permanen"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -468,6 +509,100 @@ export default function OrdersPage() {
                   <>
                     <XCircle className="w-4 h-4" />
                     Ya, Batalkan
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus Semua */}
+      {showBulkModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-scale-in">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-100">
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                </div>
+                <h3 className="text-lg font-bold text-text-primary">
+                  Hapus {statusFilter === "all" ? "Semua" : "Sesuai Filter"}?
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowBulkModal(false)}
+                disabled={bulkLoading}
+                className="p-2 rounded-lg hover:bg-surface-secondary text-text-tertiary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-sm font-bold text-red-700">
+                  {filteredOrders.length} order akan dihapus permanen
+                </p>
+                <p className="text-xs text-red-600 mt-1">
+                  Filter aktif:{" "}
+                  <span className="font-mono">
+                    {statusFilters.find((f) => f.value === statusFilter)?.label || statusFilter}
+                  </span>
+                </p>
+              </div>
+
+              <div className="space-y-2 text-sm text-text-secondary">
+                <p>
+                  Tindakan ini akan <strong className="text-red-600">menghapus secara permanen</strong> seluruh order beserta data checklist & hasil inspeksi yang terkait — tidak peduli statusnya (termasuk yang sudah selesai).
+                </p>
+                <p className="text-red-600 font-medium">⚠️ Tidak bisa dibatalkan!</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">
+                  Ketik <span className="font-mono font-bold text-red-600">HAPUS</span> untuk konfirmasi
+                </label>
+                <input
+                  type="text"
+                  value={bulkConfirmText}
+                  onChange={(e) => setBulkConfirmText(e.target.value)}
+                  placeholder="HAPUS"
+                  disabled={bulkLoading}
+                  className="w-full px-3 py-2.5 bg-white border border-border rounded-xl text-sm font-mono focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none transition-all"
+                />
+              </div>
+
+              {bulkError && (
+                <div className="bg-danger-bg border border-red-200 text-danger text-sm rounded-xl p-3 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {bulkError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 px-6 py-4 border-t border-border-light bg-surface-secondary/50 rounded-b-2xl">
+              <button
+                onClick={() => setShowBulkModal(false)}
+                disabled={bulkLoading}
+                className="flex-1 px-4 py-2.5 bg-white border border-border hover:bg-surface-secondary text-text-primary font-semibold rounded-xl text-sm cursor-pointer transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={executeBulkDelete}
+                disabled={bulkLoading || bulkConfirmText !== "HAPUS" || filteredOrders.length === 0}
+                className="flex-1 px-4 py-2.5 font-semibold rounded-xl text-sm cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white shadow-sm"
+              >
+                {bulkLoading ? (
+                  <>
+                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    Menghapus...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Hapus {filteredOrders.length} Order
                   </>
                 )}
               </button>

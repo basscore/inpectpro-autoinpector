@@ -259,10 +259,11 @@ export async function DELETE(
       return NextResponse.json({ error: "Order tidak ditemukan" }, { status: 404 });
     }
 
-    // Tidak boleh menghapus/membatalkan order yang sudah selesai
-    if (order.status === "completed") {
+    // Cancel hanya berlaku untuk order yang belum selesai.
+    // Hard delete dibolehkan untuk semua status (termasuk completed/cancelled).
+    if (mode === "cancel" && (order.status === "completed" || order.status === "cancelled")) {
       return NextResponse.json(
-        { error: "Order yang sudah selesai tidak bisa dibatalkan atau dihapus" },
+        { error: "Order yang sudah selesai/dibatalkan tidak bisa dibatalkan lagi. Gunakan hapus permanen." },
         { status: 400 }
       );
     }
