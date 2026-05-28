@@ -40,7 +40,8 @@ export default function InspectorLayout({
   };
 
   // Check if currently in inspection mode (hide bottom nav)
-  const isInspectionMode = pathname.includes("/inspect");
+  // Match /inspect as a path segment, not /inspector — must be followed by / or end-of-string
+  const isInspectionMode = /\/inspect(\/|$)/.test(pathname);
 
   const isActive = (href: string) => {
     if (href === "/inspector/dashboard") return pathname === href;
