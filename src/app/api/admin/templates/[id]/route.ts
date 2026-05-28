@@ -174,3 +174,50 @@ export async function PUT(
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// DELETE: Menghapus template
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const admin = await verifyAdminSession();
+    if (!admin) {
+      return NextResponse.json({ error: "Akses ditolak" }, { status: 401 });
+    }
+
+    const { id } = await params;
+
+    // Hapus template dari DB.
+    // Jika masih dirujuk oleh tabel orders (on delete restrict), Supabase/PostgreSQL akan mengembalikan error 23503.
+    const { error } = await supabaseAdmin
+      .from("templates")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      if (error.code === "23503") {
+        return NextResponse.json(
+          {
+            error:
+              "Template tidak dapat dihapus karena sudah memiliki riwayat transaksi order. Silakan gunakan fitur 'Arsipkan' agar template tidak muncul pada pilihan order baru.",
+          },
+          { status: 400 }
+        );
+      }
+      console.error("Delete template error:", error);
+      return NextResponse.json(
+        { error: "Gagal menghapus template: " + error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Template berhasil dihapus",
+    });
+  } catch (error: any) {
+    console.error("Delete Template API Error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

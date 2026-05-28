@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Layers,
   CheckSquare,
+  GripVertical,
 } from "lucide-react";
 
 interface Item {
@@ -38,6 +39,10 @@ export default function NewTemplatePage() {
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // States for Drag & Drop
+  const [draggedCatIdx, setDraggedCatIdx] = useState<number | null>(null);
+  const [draggedItemCoords, setDraggedItemCoords] = useState<{ catIdx: number; itemIdx: number } | null>(null);
 
   const addCategory = () => {
     setCategories([...categories, { name: "", items: [] }]);
@@ -79,22 +84,103 @@ export default function NewTemplatePage() {
     setCategories(updated);
   };
 
+  // Drag & Drop Category Handlers
+  const handleCatDragStart = (idx: number) => {
+    setDraggedCatIdx(idx);
+  };
+
+  const handleCatDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+  };
+
+  const handleCatDrop = (idx: number) => {
+    if (draggedCatIdx === null || draggedCatIdx === idx) return;
+    const updated = [...categories];
+    const draggedCat = updated[draggedCatIdx];
+    updated.splice(draggedCatIdx, 1);
+    updated.splice(idx, 0, draggedCat);
+    setCategories(updated);
+    setDraggedCatIdx(null);
+  };
+
+  // Drag & Drop Item Handlers
+  const handleItemDragStart = (catIdx: number, itemIdx: number) => {
+    setDraggedItemCoords({ catIdx, itemIdx });
+  };
+
+  const handleItemDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleItemDrop = (targetCatIdx: number, targetItemIdx?: number) => {
+    if (!draggedItemCoords) return;
+    const { catIdx: sourceCatIdx, itemIdx: sourceItemIdx } = draggedItemCoords;
+
+    if (sourceCatIdx === targetCatIdx && sourceItemIdx === targetItemIdx) {
+      setDraggedItemCoords(null);
+      return;
+    }
+
+    const updated = [...categories];
+    const itemToMove = updated[sourceCatIdx].items[sourceItemIdx];
+
+    // Remove from source list
+    updated[sourceCatIdx].items.splice(sourceItemIdx, 1);
+
+    // Insert into target list
+    if (targetItemIdx !== undefined) {
+      updated[targetCatIdx].items.splice(targetItemIdx, 0, itemToMove);
+    } else {
+      updated[targetCatIdx].items.push(itemToMove);
+    }
+
+    setCategories(updated);
+    setDraggedItemCoords(null);
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       setError("Nama template wajib diisi");
       return;
     }
 
-    if (categories.length === 0) {
-      setError("Wajib menambahkan minimal 1 kategori");
+    // Merge categories with empty/blank names into "Tanpa Kategori"
+    let mergedCategories: Category[] = [];
+    let tanpaKategoriItems: Item[] = [];
+
+    for (const cat of categories) {
+      if (!cat.name.trim()) {
+        tanpaKategoriItems.push(...cat.items);
+      } else {
+        mergedCategories.push({
+          ...cat,
+          items: [...cat.items],
+        });
+      }
+    }
+
+    if (tanpaKategoriItems.length > 0) {
+      const existingIdx = mergedCategories.findIndex(
+        (c) => c.name.trim().toLowerCase() === "tanpa kategori"
+      );
+      if (existingIdx !== -1) {
+        mergedCategories[existingIdx].items.push(...tanpaKategoriItems);
+      } else {
+        mergedCategories.push({
+          name: "Tanpa Kategori",
+          items: tanpaKategoriItems,
+        });
+      }
+    }
+
+    const totalItems = mergedCategories.reduce((sum, cat) => sum + cat.items.length, 0);
+    if (totalItems === 0) {
+      setError("Template wajib memiliki minimal 1 item inspeksi");
       return;
     }
 
-    for (const [cIdx, cat] of categories.entries()) {
-      if (!cat.name.trim()) {
-        setError(`Nama Kategori ke-${cIdx + 1} tidak boleh kosong`);
-        return;
-      }
+    // Validate remaining categories and items
+    for (const cat of mergedCategories) {
       if (cat.items.length === 0) {
         setError(`Kategori "${cat.name}" wajib memiliki minimal 1 item inspeksi`);
         return;
@@ -117,7 +203,7 @@ export default function NewTemplatePage() {
         body: JSON.stringify({
           name,
           description: description || undefined,
-          categories: categories.map((cat, catIdx) => ({
+          categories: mergedCategories.map((cat, catIdx) => ({
             name: cat.name,
             order: catIdx + 1,
             items: cat.items.map((item, itemIdx) => ({
@@ -227,17 +313,30 @@ export default function NewTemplatePage() {
         {categories.map((cat, catIdx) => (
           <div
             key={catIdx}
-            className="bg-white rounded-2xl border border-border shadow-xs overflow-hidden"
+            draggable
+            onDragStart={(e) => {
+              const target = e.target as HTMLElement;
+              if (target.closest("input") || target.closest("button") || target.closest("textarea") || target.closest("select")) {
+                e.preventDefault();
+                return;
+              }
+              handleCatDragStart(catIdx);
+            }}
+            onDragOver={(e) => handleCatDragOver(e, catIdx)}
+            onDrop={() => handleCatDrop(catIdx)}
+            className={`bg-white rounded-2xl border shadow-xs overflow-hidden transition-all duration-200 ${
+              draggedCatIdx === catIdx ? "border-accent/40 opacity-40 scale-[0.99] shadow-inner" : "border-border"
+            }`}
           >
             {/* Category Header */}
             <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-b border-border-light">
-              <div className="flex-1 max-w-md">
+              <div className="flex-1 flex items-center gap-3 max-w-md">
+                <GripVertical className="w-4 h-4 text-text-tertiary cursor-grab active:cursor-grabbing flex-shrink-0" />
                 <input
                   type="text"
-                  required
                   value={cat.name}
                   onChange={(e) => handleCategoryNameChange(catIdx, e.target.value)}
-                  placeholder={`Nama Kategori (contoh: Eksterior, Interior)`}
+                  placeholder="Nama Kategori (Kosongkan untuk kategori 'Tanpa Kategori')"
                   className="w-full px-3 py-1.5 bg-white border border-border rounded-lg text-text-primary font-bold text-sm focus:border-accent focus:ring-1 focus:ring-accent/10 outline-none transition-all"
                 />
               </div>
@@ -264,12 +363,46 @@ export default function NewTemplatePage() {
             {/* Category Items */}
             <div className="p-6 divide-y divide-border-light space-y-4 divide-y-reverse">
               {cat.items.length === 0 ? (
-                <p className="text-xs text-text-tertiary text-center py-4">
-                  Belum ada titik pemeriksaan di kategori ini. Klik "Pemeriksaan" di atas untuk menambahkan.
-                </p>
+                <div
+                  onDragOver={(e) => handleItemDragOver(e)}
+                  onDrop={() => handleItemDrop(catIdx)}
+                  className="text-xs text-text-tertiary text-center py-6 border border-dashed border-border rounded-xl bg-slate-50/50 hover:bg-slate-50 transition-colors"
+                >
+                  Belum ada titik pemeriksaan di kategori ini. Tarik pemeriksaan ke sini atau klik "+ Pemeriksaan" di atas.
+                </div>
               ) : (
                 cat.items.map((item, itemIdx) => (
-                  <div key={itemIdx} className="pt-4 first:pt-0 flex flex-col md:flex-row gap-4 items-start">
+                  <div
+                    key={itemIdx}
+                    draggable
+                    onDragStart={(e) => {
+                      const target = e.target as HTMLElement;
+                      if (
+                        target.closest("input") ||
+                        target.closest("button") ||
+                        target.closest("textarea") ||
+                        target.closest("[type='checkbox']")
+                      ) {
+                        e.preventDefault();
+                        return;
+                      }
+                      handleItemDragStart(catIdx, itemIdx);
+                    }}
+                    onDragOver={(e) => handleItemDragOver(e)}
+                    onDrop={(e) => {
+                      e.stopPropagation();
+                      handleItemDrop(catIdx, itemIdx);
+                    }}
+                    className={`pt-4 first:pt-0 flex flex-col md:flex-row gap-4 items-start transition-all duration-200 ${
+                      draggedItemCoords?.catIdx === catIdx && draggedItemCoords?.itemIdx === itemIdx
+                        ? "opacity-35 scale-[0.98] bg-slate-50/50 p-2 rounded-xl border border-dashed border-accent/25"
+                        : ""
+                    }`}
+                  >
+                    <div className="pt-2.5 hidden md:block">
+                      <GripVertical className="w-3.5 h-3.5 text-text-tertiary cursor-grab active:cursor-grabbing flex-shrink-0" />
+                    </div>
+
                     <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                       <div>
                         <label className="block text-xs font-semibold text-text-secondary mb-1">
@@ -292,7 +425,7 @@ export default function NewTemplatePage() {
                           type="text"
                           value={item.description}
                           onChange={(e) => handleItemChange(catIdx, itemIdx, "description", e.target.value)}
-                          placeholder="Contoh: Cek kedalaman kembang ban minimum 1.6mm"
+                          placeholder="Contoh: Cek kedalaman kembang ban"
                           className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-text-primary focus:border-accent focus:bg-white focus:ring-1 focus:ring-accent/10 outline-none transition-all"
                         />
                       </div>
