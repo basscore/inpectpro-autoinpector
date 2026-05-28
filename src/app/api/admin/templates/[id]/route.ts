@@ -42,6 +42,7 @@ export async function GET(
         name,
         description,
         is_archived,
+        is_default,
         created_at,
         updated_at,
         categories:template_categories(
@@ -187,6 +188,38 @@ export async function DELETE(
     }
 
     const { id } = await params;
+
+    // Cek apakah template ini adalah template bawaan (tidak boleh dihapus).
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from("templates")
+      .select("is_default")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error("Fetch template before delete error:", fetchError);
+      return NextResponse.json(
+        { error: "Gagal memeriksa template" },
+        { status: 500 }
+      );
+    }
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Template tidak ditemukan" },
+        { status: 404 }
+      );
+    }
+
+    if (existing.is_default) {
+      return NextResponse.json(
+        {
+          error:
+            "Template bawaan tidak dapat dihapus. Anda tetap bisa mengedit kategori dan itemnya, atau arsipkan jika tidak ingin muncul pada order baru.",
+        },
+        { status: 400 }
+      );
+    }
 
     // Hapus template dari DB.
     // Jika masih dirujuk oleh tabel orders (on delete restrict), Supabase/PostgreSQL akan mengembalikan error 23503.

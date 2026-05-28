@@ -11,6 +11,7 @@ import {
   AlertCircle,
   RefreshCw,
   Trash2,
+  Lock,
 } from "lucide-react";
 
 interface TemplateItem {
@@ -29,6 +30,7 @@ interface Template {
   name: string;
   description?: string;
   is_archived: boolean;
+  is_default?: boolean;
   categories: TemplateCategory[];
 }
 
@@ -231,19 +233,27 @@ export default function TemplatesPage() {
                     </div>
                     
                     <div className="flex items-center gap-2">
+                      {template.is_default && (
+                        <span className="text-xs font-medium bg-purple-50 text-purple-600 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                          <Lock className="w-3 h-3" />
+                          Bawaan
+                        </span>
+                      )}
                       {template.is_archived && (
                         <span className="text-xs font-medium bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-full flex items-center gap-1">
                           <Archive className="w-3 h-3" />
                           Arsip
                         </span>
                       )}
-                      <button
-                        onClick={(e) => handleDeleteClick(e, template)}
-                        className="p-1.5 rounded-lg text-text-tertiary hover:text-danger hover:bg-danger-bg opacity-0 group-hover:opacity-100 transition-all cursor-pointer flex items-center justify-center border border-transparent hover:border-red-100"
-                        title="Hapus Template"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {!template.is_default && (
+                        <button
+                          onClick={(e) => handleDeleteClick(e, template)}
+                          className="p-1.5 rounded-lg text-text-tertiary hover:text-danger hover:bg-danger-bg opacity-0 group-hover:opacity-100 transition-all cursor-pointer flex items-center justify-center border border-transparent hover:border-red-100"
+                          title="Hapus Template"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 

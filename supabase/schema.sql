@@ -35,6 +35,7 @@ create table if not exists public.templates (
   name varchar(100) not null,
   description text,
   is_archived boolean default false not null,
+  is_default boolean default false not null,
   created_at timestamp with time zone default current_timestamp not null,
   updated_at timestamp with time zone default current_timestamp not null
 );

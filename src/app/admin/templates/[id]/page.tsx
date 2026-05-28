@@ -12,6 +12,8 @@ import {
   AlertCircle,
   RefreshCw,
   GripVertical,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 interface Item {
@@ -26,6 +28,7 @@ interface Category {
   id?: string;
   name: string;
   items: Item[];
+  _collapsed?: boolean;
 }
 
 export default function EditTemplatePage({ params }: { params: Promise<{ id: string }> }) {
@@ -35,6 +38,7 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
   const [description, setDescription] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
   const [isArchived, setIsArchived] = useState(false);
+  const [isDefault, setIsDefault] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -57,6 +61,7 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
       setName(tmpl.name);
       setDescription(tmpl.description || "");
       setIsArchived(tmpl.is_archived);
+      setIsDefault(!!tmpl.is_default);
       setCategories(tmpl.categories || []);
     } catch (err: any) {
       setError(err.message || "Gagal menghubungkan ke server");
@@ -70,7 +75,17 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
   }, [id]);
 
   const addCategory = () => {
-    setCategories([...categories, { name: "", items: [] }]);
+    setCategories([...categories, { name: "", items: [], _collapsed: false }]);
+  };
+
+  const toggleCategoryCollapse = (catIdx: number) => {
+    const updated = [...categories];
+    updated[catIdx] = { ...updated[catIdx], _collapsed: !updated[catIdx]._collapsed };
+    setCategories(updated);
+  };
+
+  const setAllCollapsed = (collapsed: boolean) => {
+    setCategories(categories.map((c) => ({ ...c, _collapsed: collapsed })));
   };
 
   const removeCategory = (catIdx: number) => {
@@ -299,8 +314,13 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2 flex-wrap">
               {loading ? "Memuat Template..." : `Edit Template: ${name}`}
+              {isDefault && (
+                <span className="text-xs bg-purple-50 text-purple-600 font-semibold px-2 py-0.5 rounded-full">
+                  Bawaan
+                </span>
+              )}
               {isArchived && (
                 <span className="text-xs bg-slate-100 text-slate-500 font-semibold px-2 py-0.5 rounded-full">
                   Diarsipkan
@@ -314,15 +334,17 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
         </div>
         {!loading && (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              disabled={isLoading || isDeleting}
-              className="inline-flex items-center gap-1.5 p-2.5 rounded-xl border border-red-200 text-danger hover:bg-danger-bg transition-all cursor-pointer bg-white disabled:opacity-60 text-xs font-semibold"
-              title="Hapus Template"
-            >
-              <Trash2 className="w-4 h-4" />
-              Hapus
-            </button>
+            {!isDefault && (
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                disabled={isLoading || isDeleting}
+                className="inline-flex items-center gap-1.5 p-2.5 rounded-xl border border-red-200 text-danger hover:bg-danger-bg transition-all cursor-pointer bg-white disabled:opacity-60 text-xs font-semibold"
+                title="Hapus Template"
+              >
+                <Trash2 className="w-4 h-4" />
+                Hapus
+              </button>
+            )}
             <button
               onClick={handleArchiveToggle}
               disabled={isLoading}
@@ -402,18 +424,42 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
 
           {/* Categories Builder */}
           <div className="space-y-6 animate-fade-in delay-2 opacity-0">
-            <div className="flex items-center justify-between border-b border-border-light pb-2">
+            <div className="flex items-center justify-between border-b border-border-light pb-2 gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-text-primary flex items-center gap-2">
                 <Layers className="w-5 h-5 text-purple-600" />
                 Susunan Kategori & Item Checklist
               </h2>
-              <button
-                onClick={addCategory}
-                className="inline-flex items-center gap-1.5 text-accent hover:text-accent-dark text-xs font-semibold bg-accent/5 hover:bg-accent/10 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Tambah Kategori
-              </button>
+              <div className="flex items-center gap-2">
+                {categories.length > 1 && (
+                  <button
+                    onClick={() => {
+                      const allCollapsed = categories.every((c) => c._collapsed);
+                      setAllCollapsed(!allCollapsed);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-text-secondary hover:text-text-primary text-xs font-semibold bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                    title="Buka/Tutup semua kategori"
+                  >
+                    {categories.every((c) => c._collapsed) ? (
+                      <>
+                        <ChevronDown className="w-3.5 h-3.5" />
+                        Buka Semua
+                      </>
+                    ) : (
+                      <>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                        Tutup Semua
+                      </>
+                    )}
+                  </button>
+                )}
+                <button
+                  onClick={addCategory}
+                  className="inline-flex items-center gap-1.5 text-accent hover:text-accent-dark text-xs font-semibold bg-accent/5 hover:bg-accent/10 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Tambah Kategori
+                </button>
+              </div>
             </div>
 
             {categories.map((cat, catIdx) => (
@@ -435,9 +481,31 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
                 }`}
               >
                 {/* Category Header */}
-                <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-b border-border-light">
-                  <div className="flex-1 flex items-center gap-3 max-w-md">
+                <div
+                  className="flex items-center justify-between px-6 py-4 bg-slate-50 border-b border-border-light"
+                  onDragOver={(e) => {
+                    if (draggedItemCoords && cat._collapsed) {
+                      e.preventDefault();
+                      const updated = [...categories];
+                      updated[catIdx] = { ...updated[catIdx], _collapsed: false };
+                      setCategories(updated);
+                    }
+                  }}
+                >
+                  <div className="flex-1 flex items-center gap-2 max-w-md">
                     <GripVertical className="w-4 h-4 text-text-tertiary cursor-grab active:cursor-grabbing flex-shrink-0" />
+                    <button
+                      type="button"
+                      onClick={() => toggleCategoryCollapse(catIdx)}
+                      className="p-1 -ml-1 rounded hover:bg-white text-text-secondary hover:text-text-primary transition-colors cursor-pointer flex-shrink-0"
+                      title={cat._collapsed ? "Buka kategori" : "Tutup kategori"}
+                    >
+                      {cat._collapsed ? (
+                        <ChevronRight className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                    </button>
                     <input
                       type="text"
                       value={cat.name}
@@ -445,11 +513,21 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
                       placeholder="Nama Kategori (Kosongkan untuk kategori 'Tanpa Kategori')"
                       className="w-full px-3 py-1.5 bg-white border border-border rounded-lg text-text-primary font-bold text-sm focus:border-accent focus:ring-1 focus:ring-accent/10 outline-none transition-all"
                     />
+                    <span className="text-[11px] font-semibold text-text-tertiary bg-white border border-border-light px-2 py-0.5 rounded-full flex-shrink-0">
+                      {cat.items.length}
+                    </span>
                   </div>
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => addItem(catIdx)}
+                      onClick={() => {
+                        if (cat._collapsed) {
+                          const updated = [...categories];
+                          updated[catIdx] = { ...updated[catIdx], _collapsed: false };
+                          setCategories(updated);
+                        }
+                        addItem(catIdx);
+                      }}
                       className="inline-flex items-center gap-1 text-primary hover:text-primary-dark text-xs font-semibold bg-white border border-border px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer shadow-2xs"
                     >
                       <Plus className="w-3 h-3" />
@@ -467,6 +545,7 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
                 </div>
 
                 {/* Category Items */}
+                {!cat._collapsed && (
                 <div className="p-6 divide-y divide-border-light space-y-4 divide-y-reverse">
                   {cat.items.length === 0 ? (
                     <div
@@ -569,6 +648,18 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
                     ))
                   )}
                 </div>
+                )}
+                {cat._collapsed && (
+                  <button
+                    type="button"
+                    onClick={() => toggleCategoryCollapse(catIdx)}
+                    className="w-full px-6 py-2.5 text-xs text-text-tertiary hover:text-text-secondary hover:bg-slate-50/60 transition-colors cursor-pointer text-left"
+                  >
+                    {cat.items.length === 0
+                      ? "Belum ada titik pemeriksaan — klik untuk membuka"
+                      : `${cat.items.length} titik pemeriksaan tersembunyi — klik untuk membuka`}
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -38,6 +38,7 @@ export async function GET() {
         name,
         description,
         is_archived,
+        is_default,
         created_at,
         updated_at,
         categories:template_categories(
