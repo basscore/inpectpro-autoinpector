@@ -88,3 +88,48 @@ export async function POST(
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// DELETE: Hapus satu item atau seluruh kategori dari order yang sedang diinspeksi
+// Body: { item_id } untuk hapus 1 item, atau { category_id } untuk hapus seluruh kategori
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await verifySession();
+    if (!user) {
+      return NextResponse.json({ error: "Akses ditolak" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const body = await request.json().catch(() => ({}));
+    const { item_id, category_id } = body || {};
+
+    if (!item_id && !category_id) {
+      return NextResponse.json({ error: "item_id atau category_id wajib diisi" }, { status: 400 });
+    }
+
+    let query = supabaseAdmin
+      .from("inspection_checklist_values")
+      .delete()
+      .eq("order_id", id);
+
+    if (item_id) {
+      query = query.eq("item_id", item_id);
+    } else if (category_id) {
+      query = query.eq("category_id", category_id);
+    }
+
+    const { error: deleteError } = await query;
+
+    if (deleteError) {
+      console.error("Hapus item/kategori error:", deleteError);
+      return NextResponse.json({ error: "Gagal menghapus" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (e: any) {
+    console.error("Hapus item API Error:", e);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

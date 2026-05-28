@@ -8,14 +8,13 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  Minus,
   Camera,
   Plus,
   MessageSquare,
   WifiOff,
   Save,
   X,
-  ImageIcon,
+  Trash2,
 } from "lucide-react";
 import type { ChecklistStatus, Severity } from "@/lib/types";
 import { getOfflineOrderDetail, saveOfflineOrderDetail, queueOfflineUpdate } from "@/lib/offline-db";
@@ -23,16 +22,9 @@ import { TopProgressBar, ChecklistSkeleton } from "@/lib/ui";
 import { compressImage } from "@/lib/image-compress";
 
 const statusOptions: { value: ChecklistStatus; icon: typeof CheckCircle2; label: string; color: string; bg: string; activeBg: string }[] = [
-  { value: "ok", icon: CheckCircle2, label: "OK", color: "text-success", bg: "bg-success-bg", activeBg: "bg-success text-white" },
+  { value: "ok", icon: CheckCircle2, label: "Baik", color: "text-success", bg: "bg-success-bg", activeBg: "bg-success text-white" },
   { value: "attention", icon: AlertTriangle, label: "Perhatian", color: "text-warning", bg: "bg-warning-bg", activeBg: "bg-warning text-white" },
-  { value: "problem", icon: XCircle, label: "Masalah", color: "text-danger", bg: "bg-danger-bg", activeBg: "bg-danger text-white" },
-  { value: "na", icon: Minus, label: "N/A", color: "text-text-tertiary", bg: "bg-surface-tertiary", activeBg: "bg-slate-500 text-white" },
-];
-
-const severityOptions: { value: Severity; label: string; color: string; activeBg: string }[] = [
-  { value: "ringan", label: "Ringan", color: "text-amber-600", activeBg: "bg-amber-500 text-white" },
-  { value: "sedang", label: "Sedang", color: "text-orange-600", activeBg: "bg-orange-500 text-white" },
-  { value: "berat", label: "Berat", color: "text-red-600", activeBg: "bg-red-600 text-white" },
+  { value: "problem", icon: XCircle, label: "Rusak", color: "text-danger", bg: "bg-danger-bg", activeBg: "bg-danger text-white" },
 ];
 
 interface ItemState {
@@ -65,6 +57,12 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
   const [addingItem, setAddingItem] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [showAddInput, setShowAddInput] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<
+    | { type: "item"; itemId: string; itemName: string }
+    | { type: "category"; categoryId: string; categoryName: string }
+    | null
+  >(null);
+  const [deletingTarget, setDeletingTarget] = useState(false);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
@@ -303,6 +301,70 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
     }
   };
 
+  const handleDeleteItem = async (itemId: string) => {
+    setDeletingTarget(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${id}/items`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: itemId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Gagal menghapus item");
+      }
+      setCategories((prev) =>
+        prev.map((cat) => ({
+          ...cat,
+          items: cat.items.filter((it: any) => it.id !== itemId),
+        }))
+      );
+      setItemStates((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      setConfirmDelete(null);
+    } catch (err: any) {
+      alert(`Gagal menghapus item: ${err.message || err}`);
+    } finally {
+      setDeletingTarget(false);
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId: string) => {
+    setDeletingTarget(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${id}/items`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category_id: categoryId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Gagal menghapus kategori");
+      }
+      const target = categories.find((c) => c.id === categoryId);
+      const removedItemIds: string[] = target?.items.map((it: any) => it.id) || [];
+      const remaining = categories.filter((c) => c.id !== categoryId);
+      setCategories(remaining);
+      setItemStates((prev) => {
+        const next = { ...prev };
+        removedItemIds.forEach((iid) => delete next[iid]);
+        return next;
+      });
+      setActiveCategory((prev) => {
+        if (remaining.length === 0) return 0;
+        return Math.min(prev, remaining.length - 1);
+      });
+      setConfirmDelete(null);
+    } catch (err: any) {
+      alert(`Gagal menghapus kategori: ${err.message || err}`);
+    } finally {
+      setDeletingTarget(false);
+    }
+  };
+
   const handleGoToSummary = async () => {
     if (filledItems < totalItems) {
       setHighlightEmpty(true);
@@ -430,6 +492,27 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
 
       {/* Items List */}
       <div className="flex-1 px-4 py-4 max-w-lg mx-auto w-full space-y-3">
+        {currentCategory && (
+          <div className="flex items-center justify-between px-1">
+            <div>
+              <p className="text-xs font-semibold text-text-primary">{currentCategory.name}</p>
+              <p className="text-[10px] text-text-tertiary">{currentCategory.items.length} item</p>
+            </div>
+            <button
+              onClick={() =>
+                setConfirmDelete({
+                  type: "category",
+                  categoryId: currentCategory.id,
+                  categoryName: currentCategory.name,
+                })
+              }
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] text-danger bg-danger-bg hover:bg-danger/10 transition-colors cursor-pointer font-medium"
+            >
+              <Trash2 className="w-3 h-3" />
+              Hapus Kategori
+            </button>
+          </div>
+        )}
         {currentCategory?.items.map((item: any) => {
           const state = getItemState(item.id);
           const isExpanded = expandedItem === item.id;
@@ -471,11 +554,20 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
                         Foto Wajib
                       </span>
                     )}
+                    <button
+                      onClick={() =>
+                        setConfirmDelete({ type: "item", itemId: item.id, itemName: item.name })
+                      }
+                      className="p-1.5 -mr-1 rounded-lg text-text-tertiary hover:text-danger hover:bg-danger-bg transition-colors cursor-pointer"
+                      aria-label="Hapus item"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 
                 {/* Status Buttons */}
-                <div className="grid grid-cols-4 gap-2 mt-3">
+                <div className="grid grid-cols-3 gap-2 mt-3">
                   {statusOptions.map((opt) => {
                     const Icon = opt.icon;
                     const isSelected = state.status === opt.value;
@@ -485,10 +577,7 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
                         onClick={() =>
                           updateItemState(item.id, {
                             status: isSelected ? null : opt.value,
-                            severity:
-                              opt.value !== "attention" && opt.value !== "problem"
-                                ? null
-                                : state.severity,
+                            severity: null,
                             is_answered: isSelected ? false : true,
                           })
                         }
@@ -502,32 +591,6 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
                     );
                   })}
                 </div>
-
-                {(state.status === "attention" || state.status === "problem") &&
-                  item.severity_required && (
-                    <div className="mt-3 pt-3 border-t border-border-light">
-                      <p className="text-xs text-text-secondary mb-2">Tingkat Kerusakan:</p>
-                      <div className="flex gap-2">
-                        {severityOptions.map((sev) => (
-                          <button
-                            key={sev.value}
-                            onClick={() =>
-                              updateItemState(item.id, {
-                                severity: state.severity === sev.value ? null : sev.value,
-                              })
-                            }
-                            className={`flex-1 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer active:scale-95 ${
-                              state.severity === sev.value
-                                ? sev.activeBg
-                                : `bg-surface-secondary ${sev.color} border border-border`
-                            }`}
-                          >
-                            {sev.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                 {/* Photo Thumbnails */}
                 {state.photos.length > 0 && (
@@ -703,6 +766,53 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
           )}
         </div>
       </div>
+
+      {/* Modal: Konfirmasi hapus item / kategori */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 animate-slide-in-up">
+            <div className="w-12 h-12 bg-danger-bg rounded-full flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6 text-danger" />
+            </div>
+            <h3 className="text-base font-bold text-text-primary text-center">
+              {confirmDelete.type === "item" ? "Hapus item ini?" : "Hapus kategori ini?"}
+            </h3>
+            <p className="text-sm text-text-secondary text-center mt-1">
+              {confirmDelete.type === "item" ? (
+                <>
+                  Item <span className="font-semibold">&quot;{confirmDelete.itemName}&quot;</span> akan dihapus dari inspeksi ini.
+                </>
+              ) : (
+                <>
+                  Seluruh item di kategori <span className="font-semibold">&quot;{confirmDelete.categoryName}&quot;</span> akan dihapus.
+                </>
+              )}
+            </p>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deletingTarget}
+                className="flex-1 py-3 border border-border rounded-xl text-sm font-medium text-text-secondary cursor-pointer disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => {
+                  if (confirmDelete.type === "item") {
+                    handleDeleteItem(confirmDelete.itemId);
+                  } else {
+                    handleDeleteCategory(confirmDelete.categoryId);
+                  }
+                }}
+                disabled={deletingTarget}
+                className="flex-1 py-3 bg-danger hover:bg-red-700 text-white rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-50"
+              >
+                {deletingTarget ? "Menghapus..." : "Hapus"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Peringatan item belum lengkap */}
       {showIncompleteModal && (
