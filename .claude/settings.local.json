@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /Users/arya/inpectpro-autoinpector && ls -la /Users/arya/inpectpro-autoinpector/)"
+    ]
+  }
+}
