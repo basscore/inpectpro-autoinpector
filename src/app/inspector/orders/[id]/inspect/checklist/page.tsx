@@ -17,7 +17,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { ChecklistStatus, Severity } from "@/lib/types";
-import { getOfflineOrderDetail, saveOfflineOrderDetail, queueOfflineUpdate } from "@/lib/offline-db";
+import { saveOfflineOrderDetail, queueOfflineUpdate, loadOrderDetailCacheFirst } from "@/lib/offline-db";
 import { TopProgressBar, ChecklistSkeleton } from "@/lib/ui";
 import { compressImage } from "@/lib/image-compress";
 
@@ -64,6 +64,8 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
   >(null);
   const [deletingTarget, setDeletingTarget] = useState(false);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // Lacak item yang dimodifikasi sejak save terakhir agar tidak semua item dikirim ulang.
+  const dirtyItemsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -78,67 +80,90 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
     }
   }, []);
 
-  const loadOrderData = async () => {
-    setLoading(true);
-    try {
-      let orderData = null;
-      if (navigator.onLine) {
-        const res = await fetch(`/api/admin/orders/${id}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.order) {
-            orderData = data.order;
-            await saveOfflineOrderDetail(id, data.order);
-          }
-        }
-      }
+  // Safety net: kalau user minimize app / tab pindah / close, flush dirty items
+  // ke IndexedDB queue secara sinkron supaya tidak hilang.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const flushOnHide = () => {
+      if (document.visibilityState !== "hidden") return;
+      if (dirtyItemsRef.current.size === 0) return;
+      const checklistUpdates = buildChecklistUpdates();
+      if (checklistUpdates.length === 0) return;
+      // Sinkronkan ke IndexedDB. queueOfflineUpdate async, browser biasanya beri
+      // ~20-30ms saat hidden — cukup untuk IndexedDB put kecil.
+      void queueOfflineUpdate(id, { checklist: checklistUpdates });
+    };
+    document.addEventListener("visibilitychange", flushOnHide);
+    window.addEventListener("pagehide", flushOnHide);
+    return () => {
+      document.removeEventListener("visibilitychange", flushOnHide);
+      window.removeEventListener("pagehide", flushOnHide);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
-      if (!orderData) {
-        orderData = await getOfflineOrderDetail(id);
-      }
+  const applyOrderData = (orderData: any) => {
+    setOrder(orderData);
+    const checklistCategories = orderData.checklist || [];
+    setCategories(checklistCategories);
 
-      if (orderData) {
-        setOrder(orderData);
-        const checklistCategories = orderData.checklist || [];
-        setCategories(checklistCategories);
+    // Build base itemStates dari payload
+    const incomingStates: Record<string, ItemState> = {};
+    checklistCategories.forEach((cat: any) => {
+      cat.items.forEach((item: any) => {
+        const validStatus =
+          item.status === "ok" ||
+          item.status === "attention" ||
+          item.status === "problem" ||
+          item.status === "na"
+            ? item.status
+            : null;
+        incomingStates[item.id] = {
+          id: item.id,
+          status: validStatus,
+          severity: item.severity || null,
+          notes: item.notes || "",
+          photos: item.photos || [],
+          is_answered: item.is_answered === true || validStatus !== null,
+        };
+      });
+    });
 
-        const initialStates: Record<string, ItemState> = {};
-        checklistCategories.forEach((cat: any) => {
-          cat.items.forEach((item: any) => {
-            const validStatus =
-              item.status === "ok" ||
-              item.status === "attention" ||
-              item.status === "problem" ||
-              item.status === "na"
-                ? item.status
-                : null;
-            initialStates[item.id] = {
-              id: item.id,
-              status: validStatus,
-              severity: item.severity || null,
-              notes: item.notes || "",
-              photos: item.photos || [],
-              is_answered: item.is_answered === true || validStatus !== null,
-            };
-          });
-        });
-        setItemStates(initialStates);
-      }
-    } catch (e) {
-      console.error("Gagal memuat checklist:", e);
-    } finally {
-      setLoading(false);
-    }
+    // Race-guard: kalau user sudah mulai mengedit item, JANGAN overwrite edit user
+    // dengan data baru dari network/cache. Untuk item-item lain (yang non-dirty),
+    // gunakan nilai terbaru dari payload.
+    setItemStates((prev) => {
+      const dirty = dirtyItemsRef.current;
+      if (dirty.size === 0) return incomingStates;
+      const merged: Record<string, ItemState> = { ...incomingStates };
+      dirty.forEach((iid) => {
+        if (prev[iid]) merged[iid] = prev[iid];
+      });
+      return merged;
+    });
   };
 
   useEffect(() => {
-    loadOrderData();
+    let cancelled = false;
+    (async () => {
+      await loadOrderDetailCacheFirst(id, (orderData) => {
+        if (cancelled) return;
+        applyOrderData(orderData);
+        setLoading(false);
+      });
+      // Kalau network gagal & cache kosong, tetap matikan loading agar UI bisa render "Order tidak ditemukan".
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const getItemState = (itemId: string): ItemState =>
     itemStates[itemId] || { id: itemId, status: null, severity: null, notes: "", photos: [], is_answered: false };
 
   const updateItemState = (itemId: string, updates: Partial<ItemState>) => {
+    dirtyItemsRef.current.add(itemId);
     setItemStates((prev) => {
       const current = prev[itemId] || { id: itemId, status: null, severity: null, notes: "", photos: [], is_answered: false };
       const next = { ...current, ...updates };
@@ -148,22 +173,38 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
     });
   };
 
-  const buildChecklistUpdates = () =>
-    Object.values(itemStates).map((s) => ({
-      id: s.id,
-      status: s.status,
-      severity: s.severity,
-      notes: s.notes,
-      photos: s.photos,
-      is_answered: s.is_answered,
-    }));
+  const buildChecklistUpdates = () => {
+    const dirtyIds = Array.from(dirtyItemsRef.current);
+    return dirtyIds
+      .map((itemId) => itemStates[itemId])
+      .filter((s): s is ItemState => s != null)
+      .map((s) => ({
+        id: s.id,
+        status: s.status,
+        severity: s.severity,
+        notes: s.notes,
+        photos: s.photos,
+        is_answered: s.is_answered,
+      }));
+  };
 
   const handleSaveProgress = async (nextStepUrl?: string, label = "Menyimpan...") => {
     if (!order) return;
-    setSaving(true);
-    setSavingLabel(label);
 
     const checklistUpdates = buildChecklistUpdates();
+
+    // Tidak ada perubahan -> langsung pindah halaman tanpa spinner / network call.
+    if (checklistUpdates.length === 0) {
+      if (nextStepUrl) router.push(nextStepUrl);
+      return;
+    }
+
+    // Snapshot dirty IDs sekarang, supaya kalau user edit lagi selama PUT berjalan,
+    // edit baru tidak ikut "terhapus" dari dirty set saat sukses.
+    const flushedIds = Array.from(dirtyItemsRef.current);
+
+    setSaving(true);
+    setSavingLabel(label);
 
     try {
       if (navigator.onLine) {
@@ -183,19 +224,85 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
           }));
           const updatedOrder = { ...order, checklist: updatedChecklist };
           await saveOfflineOrderDetail(id, updatedOrder);
+          flushedIds.forEach((iid) => dirtyItemsRef.current.delete(iid));
           if (nextStepUrl) router.push(nextStepUrl);
           return;
         }
       }
       await queueOfflineUpdate(id, { checklist: checklistUpdates });
+      // Saat masuk queue offline kita anggap "tersimpan" agar tidak dikirim dua kali nanti.
+      flushedIds.forEach((iid) => dirtyItemsRef.current.delete(iid));
       if (nextStepUrl) router.push(nextStepUrl);
     } catch (err) {
       console.error("Gagal menyimpan progress checklist:", err);
       await queueOfflineUpdate(id, { checklist: checklistUpdates });
+      flushedIds.forEach((iid) => dirtyItemsRef.current.delete(iid));
       if (nextStepUrl) router.push(nextStepUrl);
     } finally {
       setSaving(false);
     }
+  };
+
+  // Save tanpa memblokir UI: persist lokal cepat (~20-30ms IndexedDB), lalu navigate,
+  // lalu PUT ke server di latar belakang. User merasa navigasi "instant"
+  // dan data tetap aman karena queue offline jadi safety net.
+  const saveProgressInBackground = async (nextStepUrl?: string) => {
+    if (!order) {
+      if (nextStepUrl) router.push(nextStepUrl);
+      return;
+    }
+
+    const checklistUpdates = buildChecklistUpdates();
+
+    // Tidak ada perubahan -> langsung pindah halaman tanpa save sama sekali.
+    if (checklistUpdates.length === 0) {
+      if (nextStepUrl) router.push(nextStepUrl);
+      return;
+    }
+
+    // Snapshot dirty IDs; bersihkan ref agar save berikutnya tidak mengirim ulang.
+    const flushedIds = Array.from(dirtyItemsRef.current);
+    flushedIds.forEach((iid) => dirtyItemsRef.current.delete(iid));
+
+    // Bangun snapshot order dengan checklist terbaru.
+    const updatedChecklist = categories.map((cat) => ({
+      ...cat,
+      items: cat.items.map((item: any) => {
+        const state = itemStates[item.id];
+        return state ? { ...item, ...state } : item;
+      }),
+    }));
+    const updatedOrder = { ...order, checklist: updatedChecklist };
+
+    // Persist lokal dulu (queue + cache). Cepat, tapi penting agar destination page
+    // (mis. ringkasan) baca cache yang sudah ter-update.
+    try {
+      await Promise.all([
+        saveOfflineOrderDetail(id, updatedOrder),
+        queueOfflineUpdate(id, { checklist: checklistUpdates }),
+      ]);
+    } catch (e) {
+      console.error("Persist lokal gagal:", e);
+    }
+
+    // Navigate sekarang. PUT server jalan di background.
+    if (nextStepUrl) router.push(nextStepUrl);
+
+    void (async () => {
+      if (!navigator.onLine) return;
+      try {
+        await fetch(`/api/admin/orders/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ checklist: checklistUpdates }),
+        });
+        // Tidak hapus queue di sini — queue per-orderId bisa berisi update dari
+        // halaman lain (vehicle/notes/status) yang belum tersinkronisasi.
+        // Cleanup dilakukan oleh syncOfflineData() di dashboard saat online kembali.
+      } catch (err) {
+        console.error("Background PUT gagal — data aman di queue:", err);
+      }
+    })();
   };
 
   const handleUploadPhoto = async (itemId: string, file: File) => {
@@ -377,7 +484,7 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
       }
       return;
     }
-    await handleSaveProgress(`/inspector/orders/${id}/inspect/summary`, "Memproses ringkasan...");
+    await saveProgressInBackground(`/inspector/orders/${id}/inspect/summary`);
   };
 
   const currentCategory = categories[activeCategory];
@@ -415,7 +522,7 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
       <div className="sticky top-0 z-30 bg-primary-dark text-white shadow-md">
         <div className="px-4 h-14 flex items-center gap-3">
           <button
-            onClick={() => handleSaveProgress(`/inspector/orders/${id}`)}
+            onClick={() => saveProgressInBackground(`/inspector/orders/${id}`)}
             className="p-2 -ml-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -467,7 +574,7 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
               <button
                 key={cat.id}
                 onClick={() => {
-                  handleSaveProgress();
+                  saveProgressInBackground();
                   setActiveCategory(i);
                   setHighlightEmpty(false);
                 }}
@@ -726,7 +833,7 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
           {activeCategory > 0 ? (
             <button
               onClick={() => {
-                handleSaveProgress();
+                saveProgressInBackground();
                 setActiveCategory((prev) => prev - 1);
                 setHighlightEmpty(false);
               }}
@@ -736,7 +843,7 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
             </button>
           ) : (
             <button
-              onClick={() => handleSaveProgress(`/inspector/orders/${id}/inspect`)}
+              onClick={() => saveProgressInBackground(`/inspector/orders/${id}/inspect`)}
               className="px-4 py-3 border border-border rounded-xl text-sm font-medium text-text-secondary hover:bg-surface-secondary transition-colors cursor-pointer"
             >
               Data Mobil
@@ -746,7 +853,7 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
           {activeCategory < categories.length - 1 ? (
             <button
               onClick={() => {
-                handleSaveProgress();
+                saveProgressInBackground();
                 setActiveCategory((prev) => prev + 1);
                 setHighlightEmpty(false);
               }}
@@ -838,7 +945,7 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
                 onClick={async () => {
                   setShowIncompleteModal(false);
                   if (pendingNavUrl) {
-                    await handleSaveProgress(pendingNavUrl, "Memproses ringkasan...");
+                    await saveProgressInBackground(pendingNavUrl);
                   }
                 }}
                 className="flex-1 py-3 bg-warning hover:bg-amber-600 text-white rounded-xl text-sm font-semibold cursor-pointer"

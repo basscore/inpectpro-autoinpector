@@ -189,25 +189,30 @@ export async function PUT(
     }
 
     // 2. Jika ada pembaruan nilai checklist titik inspeksi (inspektor sedang meng-save progress)
+    // Update dilakukan paralel agar tidak menumpuk round-trip ke DB.
     if (checklist && Array.isArray(checklist) && checklist.length > 0) {
-      for (const item of checklist) {
-        const isAnswered = item.is_answered === true || (item.status != null && item.status !== "");
-        const { error: upsertError } = await supabaseAdmin
-          .from("inspection_checklist_values")
-          .update({
-            status: item.status || null,
-            severity: item.severity || null,
-            notes: item.notes || null,
-            photos: item.photos || [],
-            is_answered: isAnswered,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("order_id", id)
-          .eq("item_id", item.id);
+      const nowIso = new Date().toISOString();
+      const results = await Promise.all(
+        checklist.map((item: any) => {
+          const isAnswered = item.is_answered === true || (item.status != null && item.status !== "");
+          return supabaseAdmin
+            .from("inspection_checklist_values")
+            .update({
+              status: item.status || null,
+              severity: item.severity || null,
+              notes: item.notes || null,
+              photos: item.photos || [],
+              is_answered: isAnswered,
+              updated_at: nowIso,
+            })
+            .eq("order_id", id)
+            .eq("item_id", item.id);
+        })
+      );
 
-        if (upsertError) {
-          console.error("Upsert checklist item value error:", upsertError);
-        }
+      const failed = results.filter((r) => r.error);
+      if (failed.length > 0) {
+        console.error("Upsert checklist item value errors:", failed.map((r) => r.error));
       }
     }
 

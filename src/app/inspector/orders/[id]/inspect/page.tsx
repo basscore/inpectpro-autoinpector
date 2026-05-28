@@ -1,9 +1,9 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Camera, WifiOff, Save } from "lucide-react";
-import { getOfflineOrderDetail, saveOfflineOrderDetail, queueOfflineUpdate } from "@/lib/offline-db";
+import { saveOfflineOrderDetail, queueOfflineUpdate, loadOrderDetailCacheFirst } from "@/lib/offline-db";
 import { TopProgressBar, OrderDetailSkeleton } from "@/lib/ui";
 
 export default function InspectVehicleDataPage({ params }: { params: Promise<{ id: string }> }) {
@@ -27,6 +27,11 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
   const [color, setColor] = useState("");
   const [transmission, setTransmission] = useState("automatic");
   const [fuelType, setFuelType] = useState("bensin");
+  // Saat user mulai mengetik di form, jangan timpa nilainya dengan respons network revalidate.
+  const formDirtyRef = useRef(false);
+  const markFormDirty = () => {
+    formDirtyRef.current = true;
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -42,66 +47,38 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
   }, []);
 
   useEffect(() => {
-    const loadOrder = async () => {
-      setLoading(true);
-      try {
-        let orderData = null;
-        if (navigator.onLine) {
-          const res = await fetch(`/api/admin/orders/${id}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success && data.order) {
-              orderData = data.order;
-              await saveOfflineOrderDetail(id, data.order);
-            }
-          }
-        }
-        
-        if (!orderData) {
-          orderData = await getOfflineOrderDetail(id);
-        }
-
-        if (orderData) {
-          setOrder(orderData);
-          setBrand(orderData.vehicle.brand || "");
-          setModel(orderData.vehicle.model || "");
-          setType(orderData.vehicle.type || "");
-          setYear(orderData.vehicle.year?.toString() || "");
-          setPlateNumber(orderData.vehicle.plate_number || "");
-          setChassisNumber(orderData.vehicle.chassis_number || "");
-          setEngineNumber(orderData.vehicle.engine_number || "");
-          setOdometerKm(orderData.vehicle.odometer_km?.toString() || "");
-          setColor(orderData.vehicle.color || "");
-          setTransmission(orderData.vehicle.transmission || "automatic");
-          setFuelType(orderData.vehicle.fuel_type || "bensin");
-        }
-      } catch (e) {
-        console.error("Gagal memuat order:", e);
-        const cached = await getOfflineOrderDetail(id);
-        if (cached) {
-          setOrder(cached);
-          setBrand(cached.vehicle.brand || "");
-          setModel(cached.vehicle.model || "");
-          setType(cached.vehicle.type || "");
-          setYear(cached.vehicle.year?.toString() || "");
-          setPlateNumber(cached.vehicle.plate_number || "");
-          setChassisNumber(cached.vehicle.chassis_number || "");
-          setEngineNumber(cached.vehicle.engine_number || "");
-          setOdometerKm(cached.vehicle.odometer_km?.toString() || "");
-          setColor(cached.vehicle.color || "");
-          setTransmission(cached.vehicle.transmission || "automatic");
-          setFuelType(cached.vehicle.fuel_type || "bensin");
-        }
-      } finally {
-        setLoading(false);
-      }
+    let cancelled = false;
+    const applyOrder = (orderData: any) => {
+      setOrder(orderData);
+      if (formDirtyRef.current) return; // jangan timpa ketikan user
+      setBrand(orderData.vehicle.brand || "");
+      setModel(orderData.vehicle.model || "");
+      setType(orderData.vehicle.type || "");
+      setYear(orderData.vehicle.year?.toString() || "");
+      setPlateNumber(orderData.vehicle.plate_number || "");
+      setChassisNumber(orderData.vehicle.chassis_number || "");
+      setEngineNumber(orderData.vehicle.engine_number || "");
+      setOdometerKm(orderData.vehicle.odometer_km?.toString() || "");
+      setColor(orderData.vehicle.color || "");
+      setTransmission(orderData.vehicle.transmission || "automatic");
+      setFuelType(orderData.vehicle.fuel_type || "bensin");
     };
-    loadOrder();
+    (async () => {
+      await loadOrderDetailCacheFirst(id, (orderData) => {
+        if (cancelled) return;
+        applyOrder(orderData);
+        setLoading(false);
+      });
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const handleSave = async (redirect = true) => {
     if (!order) return;
-    
+
     setSaving(true);
     const vehicleData = {
       brand,
@@ -116,48 +93,42 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
       transmission,
       fuel_type: fuelType,
     };
+    const updatedOrder = { ...order, vehicle: vehicleData };
 
+    // Persist lokal dulu (cepat) supaya halaman checklist baca data terbaru.
     try {
-      if (navigator.onLine) {
-        const res = await fetch(`/api/admin/orders/${id}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            vehicle: vehicleData,
-          }),
-        });
-
-        if (res.ok) {
-          const updatedOrder = { ...order, vehicle: vehicleData };
-          await saveOfflineOrderDetail(id, updatedOrder);
-          if (redirect) {
-            router.push(`/inspector/orders/${id}/inspect/checklist`);
-          }
-          return;
-        }
-      }
-
-      // Offline flow
-      await queueOfflineUpdate(id, { vehicle: vehicleData });
-      const updatedOrder = { ...order, vehicle: vehicleData };
-      await saveOfflineOrderDetail(id, updatedOrder);
-      if (redirect) {
-        router.push(`/inspector/orders/${id}/inspect/checklist`);
-      }
-    } catch (err) {
-      console.error("Gagal menyimpan data kendaraan:", err);
-      // Offline fallback
-      await queueOfflineUpdate(id, { vehicle: vehicleData });
-      const updatedOrder = { ...order, vehicle: vehicleData };
-      await saveOfflineOrderDetail(id, updatedOrder);
-      if (redirect) {
-        router.push(`/inspector/orders/${id}/inspect/checklist`);
-      }
-    } finally {
-      setSaving(false);
+      await Promise.all([
+        saveOfflineOrderDetail(id, updatedOrder),
+        queueOfflineUpdate(id, { vehicle: vehicleData }),
+      ]);
+    } catch (e) {
+      console.error("Persist lokal data kendaraan gagal:", e);
     }
+
+    // Reset dirty flag agar revalidate jaringan boleh re-init form lagi nanti.
+    formDirtyRef.current = false;
+
+    if (redirect) {
+      router.push(`/inspector/orders/${id}/inspect/checklist`);
+    }
+    setSaving(false);
+
+    // PUT ke server di background — UI tidak nunggu.
+    void (async () => {
+      if (!navigator.onLine) return;
+      try {
+        await fetch(`/api/admin/orders/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vehicle: vehicleData }),
+        });
+        // Jangan hapus queue di sini — queue per-orderId bisa berisi update
+        // dari halaman lain (checklist) yang belum tersinkronisasi.
+        // Sinkronisasi akhir dipegang oleh syncOfflineData() di dashboard.
+      } catch (err) {
+        console.error("Background PUT vehicle gagal — data aman di queue:", err);
+      }
+    })();
   };
 
   if (loading) {
@@ -222,7 +193,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
               <input
                 type="text"
                 value={brand}
-                onChange={(e) => setBrand(e.target.value)}
+                onChange={(e) => { markFormDirty(); setBrand(e.target.value); }}
                 className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all"
               />
             </div>
@@ -233,7 +204,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
               <input
                 type="text"
                 value={model}
-                onChange={(e) => setModel(e.target.value)}
+                onChange={(e) => { markFormDirty(); setModel(e.target.value); }}
                 className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all"
               />
             </div>
@@ -244,7 +215,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
               <input
                 type="text"
                 value={type}
-                onChange={(e) => setType(e.target.value)}
+                onChange={(e) => { markFormDirty(); setType(e.target.value); }}
                 className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all"
               />
             </div>
@@ -255,7 +226,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
               <input
                 type="number"
                 value={year}
-                onChange={(e) => setYear(e.target.value)}
+                onChange={(e) => { markFormDirty(); setYear(e.target.value); }}
                 className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all"
               />
             </div>
@@ -268,7 +239,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
             <input
               type="text"
               value={plateNumber}
-              onChange={(e) => setPlateNumber(e.target.value)}
+              onChange={(e) => { markFormDirty(); setPlateNumber(e.target.value); }}
               className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all uppercase"
             />
           </div>
@@ -280,7 +251,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
             <input
               type="text"
               value={chassisNumber}
-              onChange={(e) => setChassisNumber(e.target.value)}
+              onChange={(e) => { markFormDirty(); setChassisNumber(e.target.value); }}
               className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all uppercase"
             />
           </div>
@@ -292,7 +263,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
             <input
               type="text"
               value={engineNumber}
-              onChange={(e) => setEngineNumber(e.target.value)}
+              onChange={(e) => { markFormDirty(); setEngineNumber(e.target.value); }}
               className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all uppercase"
             />
           </div>
@@ -305,7 +276,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
               <input
                 type="number"
                 value={odometerKm}
-                onChange={(e) => setOdometerKm(e.target.value)}
+                onChange={(e) => { markFormDirty(); setOdometerKm(e.target.value); }}
                 className="flex-1 px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all"
               />
               <button
@@ -326,7 +297,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
               <input
                 type="text"
                 value={color}
-                onChange={(e) => setColor(e.target.value)}
+                onChange={(e) => { markFormDirty(); setColor(e.target.value); }}
                 className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all"
               />
             </div>
@@ -336,7 +307,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
               </label>
               <select
                 value={transmission}
-                onChange={(e) => setTransmission(e.target.value)}
+                onChange={(e) => { markFormDirty(); setTransmission(e.target.value); }}
                 className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all cursor-pointer"
               >
                 <option value="automatic">Otomatis</option>
@@ -351,7 +322,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
             </label>
             <select
               value={fuelType}
-              onChange={(e) => setFuelType(e.target.value)}
+              onChange={(e) => { markFormDirty(); setFuelType(e.target.value); }}
               className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all cursor-pointer"
             >
               <option value="bensin">Bensin</option>

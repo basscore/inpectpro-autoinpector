@@ -122,6 +122,43 @@ export async function getOfflineOrderDetail(orderId: string): Promise<any> {
   });
 }
 
+// Cache-first loader: panggil callback DUA KALI — pertama dari cache (instant),
+// lalu dari network (revalidate). Loading skeleton hanya muncul kalau cache kosong
+// dan network belum balas.
+//
+// `onUpdate` dipanggil dengan source = 'cache' lalu 'network' (jika online & sukses).
+// Kalau cache kosong, hanya 'network' yang dipanggil.
+// `hasFreshLocalChanges` (opsional) — kalau true saat network respons datang,
+// payload network akan tetap dikirim tapi caller bisa pilih untuk tidak merge
+// agar tidak meng-overwrite ketikan/edit user yang belum tersimpan.
+export async function loadOrderDetailCacheFirst(
+  orderId: string,
+  onUpdate: (order: any, source: "cache" | "network") => void
+): Promise<void> {
+  // 1) Cache dulu (instant)
+  try {
+    const cached = await getOfflineOrderDetail(orderId);
+    if (cached) onUpdate(cached, "cache");
+  } catch (e) {
+    console.error("[Cache-First] Gagal baca cache:", e);
+  }
+
+  // 2) Network di background (kalau online)
+  if (typeof navigator === "undefined" || !navigator.onLine) return;
+
+  try {
+    const res = await fetch(`/api/admin/orders/${orderId}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data?.success && data.order) {
+      await saveOfflineOrderDetail(orderId, data.order);
+      onUpdate(data.order, "network");
+    }
+  } catch (e) {
+    console.error("[Cache-First] Gagal revalidate dari network:", e);
+  }
+}
+
 // --- Operasi Antrean Sinkronisasi (Queue) ---
 
 // Menambahkan atau memperbarui antrean update offline

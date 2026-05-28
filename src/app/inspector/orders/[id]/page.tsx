@@ -20,7 +20,7 @@ import {
   Camera,
 } from "lucide-react";
 import { ORDER_STATUS_CONFIG } from "@/lib/mock-data";
-import { getOfflineOrderDetail, saveOfflineOrderDetail, queueOfflineUpdate } from "@/lib/offline-db";
+import { saveOfflineOrderDetail, queueOfflineUpdate, loadOrderDetailCacheFirst } from "@/lib/offline-db";
 import { TopProgressBar, OrderDetailSkeleton } from "@/lib/ui";
 
 export default function InspectorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -44,74 +44,55 @@ export default function InspectorOrderDetailPage({ params }: { params: Promise<{
     }
   }, []);
 
-  const fetchOrderDetail = async () => {
-    setLoading(true);
-    try {
-      if (navigator.onLine) {
-        const res = await fetch(`/api/admin/orders/${id}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.order) {
-            setOrder(data.order);
-            await saveOfflineOrderDetail(id, data.order);
-            return;
-          }
-        }
-      }
-      // Fallback
-      const offlineOrder = await getOfflineOrderDetail(id);
-      setOrder(offlineOrder);
-    } catch (e) {
-      console.error("Gagal mengambil detail order:", e);
-      const offlineOrder = await getOfflineOrderDetail(id);
-      setOrder(offlineOrder);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchOrderDetail();
+    let cancelled = false;
+    (async () => {
+      await loadOrderDetailCacheFirst(id, (orderData) => {
+        if (cancelled) return;
+        setOrder(orderData);
+        setLoading(false);
+      });
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const handleStartInspection = async () => {
     if (!order) return;
-    
-    // Set status to in_progress
-    setUpdating(true);
-    try {
-      if (navigator.onLine) {
-        const res = await fetch(`/api/admin/orders/${id}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            status: "in_progress",
-          }),
-        });
-        
-        if (res.ok) {
-          router.push(`/inspector/orders/${id}/inspect`);
-          return;
-        }
-      }
 
-      // Offline flow: Queue update and update local state
-      await queueOfflineUpdate(id, { status: "in_progress" });
-      const updatedLocal = { ...order, status: "in_progress" };
-      await saveOfflineOrderDetail(id, updatedLocal);
-      router.push(`/inspector/orders/${id}/inspect`);
-    } catch (err) {
-      console.error("Gagal memperbarui status order:", err);
-      // Offline fallback in case of exceptions
-      await queueOfflineUpdate(id, { status: "in_progress" });
-      const updatedLocal = { ...order, status: "in_progress" };
-      await saveOfflineOrderDetail(id, updatedLocal);
-      router.push(`/inspector/orders/${id}/inspect`);
-    } finally {
-      setUpdating(false);
+    setUpdating(true);
+    const updatedLocal = { ...order, status: "in_progress" };
+
+    // Persist lokal dulu (cepat) supaya halaman /inspect baca status terbaru.
+    try {
+      await Promise.all([
+        saveOfflineOrderDetail(id, updatedLocal),
+        queueOfflineUpdate(id, { status: "in_progress" }),
+      ]);
+    } catch (e) {
+      console.error("Persist lokal status gagal:", e);
     }
+
+    // Navigate sekarang. PUT server jalan di background.
+    router.push(`/inspector/orders/${id}/inspect`);
+    setUpdating(false);
+
+    void (async () => {
+      if (!navigator.onLine) return;
+      try {
+        await fetch(`/api/admin/orders/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "in_progress" }),
+        });
+        // Queue dibersihkan oleh syncOfflineData() — jangan hapus di sini
+        // agar tidak menghapus update halaman lain yang ikut ter-merge.
+      } catch (err) {
+        console.error("Background PUT status gagal — data aman di queue:", err);
+      }
+    })();
   };
 
   if (loading) {

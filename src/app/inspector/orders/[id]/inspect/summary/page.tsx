@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -14,7 +14,7 @@ import {
   ClipboardCheck,
   WifiOff,
 } from "lucide-react";
-import { getOfflineOrderDetail, saveOfflineOrderDetail, queueOfflineUpdate } from "@/lib/offline-db";
+import { saveOfflineOrderDetail, queueOfflineUpdate, loadOrderDetailCacheFirst } from "@/lib/offline-db";
 import { TopProgressBar, SummarySkeleton } from "@/lib/ui";
 
 export default function InspectionSummaryPage({ params }: { params: Promise<{ id: string }> }) {
@@ -27,6 +27,8 @@ export default function InspectionSummaryPage({ params }: { params: Promise<{ id
   const [submitted, setSubmitted] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [notes, setNotes] = useState("");
+  // Jangan timpa ketikan user dengan data network kalau dia sudah edit notes.
+  const notesDirtyRef = useRef(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -41,43 +43,22 @@ export default function InspectionSummaryPage({ params }: { params: Promise<{ id
     }
   }, []);
 
-  const loadSummaryData = async () => {
-    setLoading(true);
-    try {
-      let orderData = null;
-      if (navigator.onLine) {
-        const res = await fetch(`/api/admin/orders/${id}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.order) {
-            orderData = data.order;
-            await saveOfflineOrderDetail(id, data.order);
-          }
-        }
-      }
-
-      if (!orderData) {
-        orderData = await getOfflineOrderDetail(id);
-      }
-
-      if (orderData) {
-        setOrder(orderData);
-        setNotes(orderData.notes || "");
-      }
-    } catch (e) {
-      console.error("Gagal memuat ringkasan inspeksi:", e);
-      const cached = await getOfflineOrderDetail(id);
-      if (cached) {
-        setOrder(cached);
-        setNotes(cached.notes || "");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadSummaryData();
+    let cancelled = false;
+    (async () => {
+      await loadOrderDetailCacheFirst(id, (orderData) => {
+        if (cancelled) return;
+        setOrder(orderData);
+        if (!notesDirtyRef.current) {
+          setNotes(orderData.notes || "");
+        }
+        setLoading(false);
+      });
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   // Calculate actual checklist metrics
@@ -328,7 +309,10 @@ export default function InspectionSummaryPage({ params }: { params: Promise<{ id
           <textarea
             rows={3}
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(e) => {
+              notesDirtyRef.current = true;
+              setNotes(e.target.value);
+            }}
             placeholder="Catatan keseluruhan untuk inspeksi ini (opsional)"
             className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all resize-none"
           />
