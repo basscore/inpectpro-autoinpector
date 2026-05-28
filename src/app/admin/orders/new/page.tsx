@@ -104,18 +104,31 @@ export default function NewOrderPage() {
   const nextStep = () => {
     // Validate current step before proceeding
     if (currentStep === 1) {
-      if (!clientName.trim() || !clientPhone.trim()) {
-        setError("Nama lengkap dan nomor HP wajib diisi");
+      const missing: string[] = [];
+      if (!clientName.trim()) missing.push("nama lengkap");
+      if (!clientPhone.trim()) missing.push("nomor HP");
+      if (missing.length > 0) {
+        setError(`Mohon lengkapi: ${missing.join(", ")}`);
         return;
       }
     } else if (currentStep === 2) {
-      if (!brand.trim() || !model.trim() || !year.trim() || !plateNumber.trim()) {
-        setError("Merk, model, tahun, dan plat nomor wajib diisi");
+      const missing: string[] = [];
+      if (!brand.trim()) missing.push("merk");
+      if (!model.trim()) missing.push("model");
+      if (!year.trim()) missing.push("tahun");
+      if (!plateNumber.trim()) missing.push("plat nomor");
+      if (missing.length > 0) {
+        setError(`Mohon lengkapi: ${missing.join(", ")}`);
         return;
       }
     } else if (currentStep === 3) {
-      if (!templateId || !scheduleDate || !scheduleTime || !location.trim()) {
-        setError("Pilih template, isi tanggal/waktu jadwal, dan isi lokasi lengkap");
+      const missing: string[] = [];
+      if (!templateId) missing.push("template inspeksi");
+      if (!scheduleDate) missing.push("tanggal");
+      if (!scheduleTime) missing.push("waktu");
+      if (!location.trim()) missing.push("lokasi inspeksi");
+      if (missing.length > 0) {
+        setError(`Mohon lengkapi: ${missing.join(", ")}`);
         return;
       }
     }
