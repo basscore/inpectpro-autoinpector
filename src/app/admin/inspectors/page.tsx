@@ -271,7 +271,7 @@ export default function InspectorsPage() {
                     <div className="flex items-center gap-2">
                       {/* Badge (Standard State) */}
                       <span
-                        className={`text-xs font-medium px-2.5 py-1 rounded-full flex items-center gap-1 transition-all group-hover:hidden ${
+                        className={`text-xs font-medium px-2.5 py-1 rounded-full flex items-center gap-1 transition-all md:group-hover:hidden ${
                           inspector.is_active
                             ? "bg-success-bg text-success"
                             : "bg-slate-100 text-slate-500"
@@ -285,8 +285,8 @@ export default function InspectorsPage() {
                         {inspector.is_active ? "Aktif" : "Nonaktif"}
                       </span>
 
-                      {/* Hover Actions */}
-                      <div className="hidden group-hover:flex items-center gap-1.5 animate-fade-in">
+                      {/* Actions (Always visible on mobile, hover-revealed on desktop) */}
+                      <div className="flex md:hidden md:group-hover:flex items-center gap-1.5 animate-fade-in">
                         <Link
                           href={`/admin/inspectors/${inspector.id}/edit`}
                           className="p-1.5 rounded-lg bg-slate-50 border border-border text-slate-500 hover:text-accent hover:border-accent/30 hover:bg-accent/5 cursor-pointer flex items-center justify-center transition-all"
