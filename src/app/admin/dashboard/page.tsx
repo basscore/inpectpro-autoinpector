@@ -18,8 +18,16 @@ import {
 } from "lucide-react";
 import { ORDER_STATUS_CONFIG } from "@/lib/mock-data";
 
+interface InspectorLite {
+  id: string;
+  name: string;
+  username: string;
+  is_active: boolean;
+}
+
 export default function AdminDashboard() {
   const [orders, setOrders] = useState<any[]>([]);
+  const [inspectors, setInspectors] = useState<InspectorLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState("Admin");
 
@@ -44,6 +52,15 @@ export default function AdminDashboard() {
             setOrders(data.orders || []);
           }
         }
+
+        // 3. Fetch inspectors
+        const inspectorsRes = await fetch("/api/admin/inspectors");
+        if (inspectorsRes.ok) {
+          const data = await inspectorsRes.json();
+          if (data.success) {
+            setInspectors(data.inspectors || []);
+          }
+        }
       } catch (err) {
         console.error("Gagal memuat data dashboard:", err);
       } finally {
@@ -52,6 +69,8 @@ export default function AdminDashboard() {
     };
     fetchData();
   }, []);
+
+  const activeInspectors = inspectors.filter((i) => i.is_active);
 
   // Compute actual dynamic statistics
   const totalOrders = orders.length;
@@ -252,26 +271,50 @@ export default function AdminDashboard() {
               </Link>
             </div>
             <div className="p-4 space-y-3">
-              {[
-                { name: "Budi Santoso", status: "Aktif di sistem" },
-                { name: "Rina Wulandari", status: "Aktif di sistem" },
-                { name: "Deni Firmansyah", status: "Tersedia" },
-              ].map((inspector, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-secondary transition-colors cursor-pointer"
-                >
-                  <div className="w-9 h-9 bg-gradient-to-br from-primary to-primary-light rounded-lg flex items-center justify-center text-white text-sm font-bold shadow-sm">
-                    {inspector.name.charAt(0)}
+              {loading ? (
+                [1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-3 p-3">
+                    <div className="w-9 h-9 bg-slate-100 rounded-lg animate-pulse" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-slate-200 rounded w-2/3 animate-pulse" />
+                      <div className="h-2.5 bg-slate-100 rounded w-1/3 animate-pulse" />
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-text-primary">
-                      {inspector.name}
-                    </p>
-                    <p className="text-xs text-text-tertiary">{inspector.status}</p>
-                  </div>
+                ))
+              ) : activeInspectors.length === 0 ? (
+                <div className="px-3 py-6 text-center">
+                  <Users className="w-8 h-8 text-text-tertiary mx-auto mb-2" />
+                  <p className="text-sm text-text-secondary font-medium">
+                    Belum ada inspektor aktif
+                  </p>
+                  <Link
+                    href="/admin/inspectors/new"
+                    className="text-xs text-accent hover:text-accent-dark font-medium mt-1 inline-block"
+                  >
+                    Tambah inspektor
+                  </Link>
                 </div>
-              ))}
+              ) : (
+                activeInspectors.slice(0, 5).map((inspector) => (
+                  <Link
+                    key={inspector.id}
+                    href={`/admin/inspectors/${inspector.id}/edit`}
+                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-secondary transition-colors cursor-pointer"
+                  >
+                    <div className="w-9 h-9 bg-gradient-to-br from-primary to-primary-light rounded-lg flex items-center justify-center text-white text-sm font-bold shadow-sm">
+                      {inspector.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">
+                        {inspector.name}
+                      </p>
+                      <p className="text-xs text-text-tertiary font-mono truncate">
+                        @{inspector.username}
+                      </p>
+                    </div>
+                  </Link>
+                ))
+              )}
             </div>
           </div>
 
