@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ClipboardList,
@@ -15,45 +16,95 @@ import {
   MapPin,
   FileText,
 } from "lucide-react";
-import { mockAdminStats, mockOrders, ORDER_STATUS_CONFIG } from "@/lib/mock-data";
-
-const statCards = [
-  {
-    label: "Total Order",
-    value: mockAdminStats.total_orders,
-    icon: ClipboardList,
-    color: "from-primary to-primary-light",
-    textColor: "text-white",
-    iconBg: "bg-white/20",
-  },
-  {
-    label: "Order Hari Ini",
-    value: mockAdminStats.orders_today,
-    icon: Calendar,
-    color: "from-info to-blue-500",
-    textColor: "text-white",
-    iconBg: "bg-white/20",
-  },
-  {
-    label: "Menunggu Review",
-    value: mockAdminStats.pending_review,
-    icon: AlertCircle,
-    color: "from-warning to-amber-400",
-    textColor: "text-white",
-    iconBg: "bg-white/20",
-  },
-  {
-    label: "Selesai Bulan Ini",
-    value: mockAdminStats.completed_this_month,
-    icon: CheckCircle2,
-    color: "from-success to-green-500",
-    textColor: "text-white",
-    iconBg: "bg-white/20",
-  },
-];
+import { ORDER_STATUS_CONFIG } from "@/lib/mock-data";
 
 export default function AdminDashboard() {
-  const recentOrders = mockOrders.slice(0, 5);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adminName, setAdminName] = useState("Admin");
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        // 1. Fetch Admin Profile info
+        const meRes = await fetch("/api/auth/me");
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          if (meData.success && meData.user) {
+            setAdminName(meData.user.name.split(" ")[0]); // Get first name
+          }
+        }
+
+        // 2. Fetch all orders
+        const ordersRes = await fetch("/api/admin/orders");
+        if (ordersRes.ok) {
+          const data = await ordersRes.json();
+          if (data.success) {
+            setOrders(data.orders || []);
+          }
+        }
+      } catch (err) {
+        console.error("Gagal memuat data dashboard:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  // Compute actual dynamic statistics
+  const totalOrders = orders.length;
+  
+  const todayStr = new Date().toISOString().split("T")[0];
+  const ordersToday = orders.filter((o) => o.schedule_date === todayStr).length;
+  
+  const pendingReview = orders.filter((o) => o.status === "pending_review").length;
+  
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+  const completedThisMonth = orders.filter((o) => {
+    if (o.status !== "completed") return false;
+    const scheduleDate = new Date(o.schedule_date);
+    return scheduleDate.getMonth() === currentMonth && scheduleDate.getFullYear() === currentYear;
+  }).length;
+
+  const recentOrders = orders.slice(0, 5);
+
+  const statCards = [
+    {
+      label: "Total Order",
+      value: loading ? "..." : totalOrders,
+      icon: ClipboardList,
+      color: "from-primary to-primary-light",
+      textColor: "text-white",
+      iconBg: "bg-white/20",
+    },
+    {
+      label: "Order Hari Ini",
+      value: loading ? "..." : ordersToday,
+      icon: Calendar,
+      color: "from-info to-blue-500",
+      textColor: "text-white",
+      iconBg: "bg-white/20",
+    },
+    {
+      label: "Menunggu Review",
+      value: loading ? "..." : pendingReview,
+      icon: AlertCircle,
+      color: "from-warning to-amber-400",
+      textColor: "text-white",
+      iconBg: "bg-white/20",
+    },
+    {
+      label: "Selesai Bulan Ini",
+      value: loading ? "..." : completedThisMonth,
+      icon: CheckCircle2,
+      color: "from-success to-green-500",
+      textColor: "text-white",
+      iconBg: "bg-white/20",
+    },
+  ];
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -62,7 +113,7 @@ export default function AdminDashboard() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
           <p className="text-sm text-text-secondary mt-1">
-            Selamat datang kembali, Arya. Berikut ringkasan hari ini.
+            Selamat datang kembali, {adminName}. Berikut ringkasan hari ini.
           </p>
         </div>
         <Link
@@ -81,7 +132,7 @@ export default function AdminDashboard() {
           return (
             <div
               key={stat.label}
-              className={`animate-fade-in delay-${i + 1} opacity-0 bg-gradient-to-br ${stat.color} rounded-2xl p-5 shadow-md relative overflow-hidden cursor-default`}
+              className={`animate-fade-in bg-gradient-to-br ${stat.color} rounded-2xl p-5 shadow-md relative overflow-hidden cursor-default`}
             >
               <div className="absolute -right-3 -bottom-3 opacity-10">
                 <Icon className="w-20 h-20" />
@@ -103,7 +154,7 @@ export default function AdminDashboard() {
       {/* Content Grid */}
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Recent Orders */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-border shadow-xs animate-fade-in delay-3 opacity-0">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-border shadow-xs animate-fade-in">
           <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
             <h2 className="text-lg font-semibold text-text-primary">
               Order Terbaru
@@ -116,59 +167,79 @@ export default function AdminDashboard() {
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
-          <div className="divide-y divide-border-light">
-            {recentOrders.map((order) => {
-              const statusConfig = ORDER_STATUS_CONFIG[order.status];
-              return (
-                <Link
-                  key={order.id}
-                  href={`/admin/orders/${order.id}`}
-                  className="flex items-center gap-4 px-6 py-4 hover:bg-surface-secondary transition-colors cursor-pointer group"
-                >
-                  <div className="w-10 h-10 bg-surface-tertiary rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-primary/5 transition-colors">
-                    <Car className="w-5 h-5 text-text-secondary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-text-primary truncate">
-                        {order.vehicle.brand} {order.vehicle.model}
-                      </p>
-                      <span className="text-xs text-text-tertiary hidden sm:inline">
-                        {order.order_number}
+
+          {loading ? (
+            <div className="p-8 text-center text-sm text-text-secondary">
+              Memuat data order terbaru...
+            </div>
+          ) : recentOrders.length === 0 ? (
+            <div className="p-12 text-center">
+              <Car className="w-10 h-10 text-text-tertiary mx-auto mb-3" />
+              <p className="text-text-secondary font-medium">Belum ada order terdaftar</p>
+              <p className="text-xs text-text-tertiary mt-1">Silakan buat order baru untuk memulai</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border-light">
+              {recentOrders.map((order) => {
+                const statusConfig = ORDER_STATUS_CONFIG[order.status] || {
+                  label: order.status,
+                  color: "text-slate-700",
+                  bg: "bg-slate-50",
+                };
+                return (
+                  <Link
+                    key={order.id}
+                    href={`/admin/orders/${order.id}`}
+                    className="flex items-center gap-4 px-6 py-4 hover:bg-surface-secondary transition-colors cursor-pointer group"
+                  >
+                    <div className="w-10 h-10 bg-surface-tertiary rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-primary/5 transition-colors">
+                      <Car className="w-5 h-5 text-text-secondary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-text-primary truncate">
+                          {order.vehicle.brand} {order.vehicle.model}
+                        </p>
+                        <span className="text-xs text-text-tertiary font-mono">
+                          {order.order_number}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-xs text-text-secondary flex items-center gap-1">
+                          <Users className="w-3 h-3" />
+                          {order.client?.name}
+                        </span>
+                        <span className="text-xs text-text-tertiary hidden sm:flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          {order.location.split(",")[0]}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span
+                        className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusConfig.bg} ${statusConfig.color}`}
+                      >
+                        {statusConfig.label}
+                      </span>
+                      <span className="text-xs text-text-tertiary flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {new Date(order.schedule_date).toLocaleDateString("id-ID", {
+                          day: "numeric",
+                          month: "short",
+                        })}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3 mt-1">
-                      <span className="text-xs text-text-secondary flex items-center gap-1">
-                        <Users className="w-3 h-3" />
-                        {order.client.name}
-                      </span>
-                      <span className="text-xs text-text-tertiary hidden sm:flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        {order.location.split(",")[0]}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span
-                      className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusConfig.bg} ${statusConfig.color}`}
-                    >
-                      {statusConfig.label}
-                    </span>
-                    <span className="text-xs text-text-tertiary flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {order.schedule_date.split("-").reverse().join("/")}
-                    </span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Quick Stats / Inspector Performance */}
         <div className="space-y-6">
           {/* Active Inspectors */}
-          <div className="bg-white rounded-2xl border border-border shadow-xs animate-fade-in delay-4 opacity-0">
+          <div className="bg-white rounded-2xl border border-border shadow-xs animate-fade-in">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
               <h2 className="text-lg font-semibold text-text-primary">
                 Inspektor Aktif
@@ -182,9 +253,9 @@ export default function AdminDashboard() {
             </div>
             <div className="p-4 space-y-3">
               {[
-                { name: "Budi Santoso", orders: 2, status: "Sedang inspeksi" },
-                { name: "Rina Wulandari", orders: 1, status: "1 order hari ini" },
-                { name: "Deni Firmansyah", orders: 0, status: "Tersedia" },
+                { name: "Budi Santoso", status: "Aktif di sistem" },
+                { name: "Rina Wulandari", status: "Aktif di sistem" },
+                { name: "Deni Firmansyah", status: "Tersedia" },
               ].map((inspector, i) => (
                 <div
                   key={i}
@@ -199,18 +270,13 @@ export default function AdminDashboard() {
                     </p>
                     <p className="text-xs text-text-tertiary">{inspector.status}</p>
                   </div>
-                  {inspector.orders > 0 && (
-                    <span className="text-xs font-medium bg-accent/10 text-accent px-2 py-0.5 rounded-full">
-                      {inspector.orders}
-                    </span>
-                  )}
                 </div>
               ))}
             </div>
           </div>
 
           {/* Quick Actions */}
-          <div className="bg-white rounded-2xl border border-border shadow-xs p-4 animate-fade-in delay-5 opacity-0">
+          <div className="bg-white rounded-2xl border border-border shadow-xs p-4 animate-fade-in">
             <h3 className="text-sm font-semibold text-text-primary mb-3 px-2">
               Aksi Cepat
             </h3>
@@ -241,3 +307,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

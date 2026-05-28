@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -35,6 +35,41 @@ export default function AdminLayout({
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  
+  // Dynamic Profile & Stats
+  const [adminName, setAdminName] = useState("Admin");
+  const [fullName, setFullName] = useState("Super Admin");
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
+
+  useEffect(() => {
+    const fetchAdminData = async () => {
+      try {
+        // 1. Fetch Admin Profile
+        const meRes = await fetch("/api/auth/me");
+        if (meRes.ok) {
+          const data = await meRes.json();
+          if (data.success && data.user) {
+            setFullName(data.user.name);
+            setAdminName(data.user.name.split(" ")[0]);
+          }
+        }
+
+        // 2. Fetch Pending Review Orders Count
+        const ordersRes = await fetch("/api/admin/orders");
+        if (ordersRes.ok) {
+          const data = await ordersRes.json();
+          if (data.success && data.orders) {
+            // Filter pending_review orders
+            const pending = data.orders.filter((o: any) => o.status === "pending_review").length;
+            setPendingReviewCount(pending);
+          }
+        }
+      } catch (err) {
+        console.error("Gagal memuat data layout admin:", err);
+      }
+    };
+    fetchAdminData();
+  }, [pathname]); // Refresh on navigation
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -50,6 +85,8 @@ export default function AdminLayout({
     if (href === "/admin/dashboard") return pathname === href;
     return pathname.startsWith(href);
   };
+
+  const initialLetter = adminName.charAt(0).toUpperCase();
 
   return (
     <div className="min-h-screen flex bg-surface-secondary">
@@ -114,9 +151,9 @@ export default function AdminLayout({
                   }`}
                 />
                 {item.label}
-                {item.href === "/admin/orders" && (
+                {item.href === "/admin/orders" && pendingReviewCount > 0 && (
                   <span className="ml-auto bg-accent/20 text-accent-light text-xs font-bold px-2 py-0.5 rounded-full">
-                    3
+                    {pendingReviewCount}
                   </span>
                 )}
               </Link>
@@ -154,7 +191,9 @@ export default function AdminLayout({
           {/* Right actions */}
           <button className="relative text-text-secondary hover:text-text-primary cursor-pointer p-2 rounded-lg hover:bg-surface-secondary transition-colors">
             <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full" />
+            {pendingReviewCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full" />
+            )}
           </button>
 
           {/* Profile dropdown */}
@@ -164,11 +203,11 @@ export default function AdminLayout({
               className="flex items-center gap-2 cursor-pointer p-1.5 rounded-lg hover:bg-surface-secondary transition-colors"
             >
               <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-light rounded-lg flex items-center justify-center text-white text-sm font-bold shadow-sm">
-                A
+                {initialLetter}
               </div>
               <div className="hidden md:block text-left">
                 <p className="text-sm font-medium text-text-primary leading-tight">
-                  Arya
+                  {adminName}
                 </p>
                 <p className="text-xs text-text-tertiary leading-tight">Admin</p>
               </div>
@@ -183,8 +222,8 @@ export default function AdminLayout({
                 />
                 <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-border py-2 z-50 animate-scale-in">
                   <div className="px-4 py-2 border-b border-border-light">
-                    <p className="text-sm font-medium text-text-primary">
-                      Arya Pratama
+                    <p className="text-sm font-medium text-text-primary truncate">
+                      {fullName}
                     </p>
                     <p className="text-xs text-text-tertiary">Super Admin</p>
                   </div>
@@ -215,3 +254,4 @@ export default function AdminLayout({
     </div>
   );
 }
+
