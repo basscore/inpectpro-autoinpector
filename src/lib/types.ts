@@ -11,7 +11,8 @@ export type OrderStatus =
   | 'assigned'
   | 'in_progress'
   | 'pending_review'
-  | 'completed';
+  | 'completed'
+  | 'cancelled';
 
 export type ChecklistStatus = 'ok' | 'attention' | 'problem' | 'na';
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Search,
   Plus,
@@ -13,6 +14,10 @@ import {
   SlidersHorizontal,
   AlertCircle,
   RefreshCw,
+  XCircle,
+  Trash2,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 import { ORDER_STATUS_CONFIG } from "@/lib/mock-data";
 
@@ -50,14 +55,23 @@ const statusFilters = [
   { value: "in_progress", label: "Sedang Dikerjakan" },
   { value: "pending_review", label: "Menunggu Review" },
   { value: "completed", label: "Selesai" },
+  { value: "cancelled", label: "Dibatalkan" },
 ];
 
 export default function OrdersPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  // State untuk modal konfirmasi
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmMode, setConfirmMode] = useState<"cancel" | "delete">("cancel");
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const fetchOrders = async () => {
     try {
@@ -77,6 +91,40 @@ export default function OrdersPage() {
   useEffect(() => {
     fetchOrders();
   }, []);
+
+  const openConfirmModal = (order: Order, mode: "cancel" | "delete", e: React.MouseEvent) => {
+    e.preventDefault(); // Cegah navigasi ke detail order
+    e.stopPropagation();
+    setSelectedOrder(order);
+    setConfirmMode(mode);
+    setActionError("");
+    setShowConfirmModal(true);
+  };
+
+  const executeAction = async () => {
+    if (!selectedOrder) return;
+    try {
+      setActionLoading(true);
+      setActionError("");
+
+      const res = await fetch(`/api/admin/orders/${selectedOrder.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: confirmMode }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal memproses permintaan");
+
+      setShowConfirmModal(false);
+      setSelectedOrder(null);
+      fetchOrders(); // Refresh daftar
+    } catch (err: any) {
+      setActionError(err.message || "Terjadi kesalahan");
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const filteredOrders = orders.filter((order) => {
     const matchSearch =
@@ -237,6 +285,7 @@ export default function OrdersPage() {
                 color: "text-slate-700",
                 bg: "bg-slate-50",
               };
+              const canCancelOrDelete = order.status !== "completed" && order.status !== "cancelled";
               return (
                 <Link
                   key={order.id}
@@ -290,6 +339,25 @@ export default function OrdersPage() {
                         <span className="text-xs text-text-tertiary">
                           {order.inspector_name}
                         </span>
+                        {/* Tombol aksi cancel/delete */}
+                        {canCancelOrDelete && (
+                          <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            <button
+                              onClick={(e) => openConfirmModal(order, "cancel", e)}
+                              className="p-1.5 rounded-lg hover:bg-amber-50 text-text-tertiary hover:text-amber-600 transition-colors cursor-pointer"
+                              title="Batalkan order"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => openConfirmModal(order, "delete", e)}
+                              className="p-1.5 rounded-lg hover:bg-red-50 text-text-tertiary hover:text-red-600 transition-colors cursor-pointer"
+                              title="Hapus order"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -297,6 +365,114 @@ export default function OrdersPage() {
               );
             })
           )}
+        </div>
+      )}
+
+      {/* Modal Konfirmasi */}
+      {showConfirmModal && selectedOrder && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-scale-in">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  confirmMode === "delete" ? "bg-red-100" : "bg-amber-100"
+                }`}>
+                  {confirmMode === "delete" ? (
+                    <Trash2 className="w-5 h-5 text-red-600" />
+                  ) : (
+                    <XCircle className="w-5 h-5 text-amber-600" />
+                  )}
+                </div>
+                <h3 className="text-lg font-bold text-text-primary">
+                  {confirmMode === "delete" ? "Hapus Order?" : "Batalkan Order?"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="p-2 rounded-lg hover:bg-surface-secondary text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="px-6 py-5 space-y-4">
+              <div className={`p-4 rounded-xl border ${
+                confirmMode === "delete" 
+                  ? "bg-red-50 border-red-200" 
+                  : "bg-amber-50 border-amber-200"
+              }`}>
+                <p className="text-sm font-medium text-text-primary">
+                  {selectedOrder.order_number} — {selectedOrder.vehicle.brand} {selectedOrder.vehicle.model}
+                </p>
+                <p className="text-xs text-text-secondary mt-1">
+                  Klien: {selectedOrder.client.name} · {selectedOrder.vehicle.plate_number}
+                </p>
+              </div>
+
+              {confirmMode === "delete" ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-text-secondary">
+                    Tindakan ini akan <strong className="text-red-600">menghapus order secara permanen</strong> beserta seluruh data checklist dan hasil inspeksi yang terkait.
+                  </p>
+                  <p className="text-sm text-red-600 font-medium">
+                    ⚠️ Tindakan ini tidak bisa dibatalkan!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-text-secondary">
+                    Status order akan diubah menjadi <strong className="text-amber-700">&quot;Dibatalkan&quot;</strong>. Data order tetap tersimpan dan bisa dilihat kembali.
+                  </p>
+                </div>
+              )}
+
+              {actionError && (
+                <div className="bg-danger-bg border border-red-200 text-danger text-sm rounded-xl p-3 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {actionError}
+                </div>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div className="flex items-center gap-3 px-6 py-4 border-t border-border-light bg-surface-secondary/50 rounded-b-2xl">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                disabled={actionLoading}
+                className="flex-1 px-4 py-2.5 bg-white border border-border hover:bg-surface-secondary text-text-primary font-semibold rounded-xl text-sm cursor-pointer transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={executeAction}
+                disabled={actionLoading}
+                className={`flex-1 px-4 py-2.5 font-semibold rounded-xl text-sm cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center gap-2 ${
+                  confirmMode === "delete"
+                    ? "bg-red-500 hover:bg-red-600 text-white shadow-sm"
+                    : "bg-amber-500 hover:bg-amber-600 text-white shadow-sm"
+                }`}
+              >
+                {actionLoading ? (
+                  <>
+                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    Memproses...
+                  </>
+                ) : confirmMode === "delete" ? (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Ya, Hapus
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-4 h-4" />
+                    Ya, Batalkan
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

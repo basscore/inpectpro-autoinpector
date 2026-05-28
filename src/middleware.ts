@@ -59,7 +59,10 @@ export function middleware(request: NextRequest) {
 
   // Proteksi Rute Super Admin
   if (pathname.startsWith("/admin")) {
-    if (payload.role !== "super_admin") {
+    // Izinkan inspektor mengakses kelola template di /admin/templates
+    if (payload.role === "inspector" && pathname.startsWith("/admin/templates")) {
+      // Izinkan
+    } else if (payload.role !== "super_admin") {
       // Jika dia inspektor, lempar ke dashboard inspektor
       if (payload.role === "inspector") {
         return NextResponse.redirect(new URL("/inspector/dashboard", request.url));
@@ -73,11 +76,17 @@ export function middleware(request: NextRequest) {
 
   // Proteksi Rute Inspektor
   if (pathname.startsWith("/inspector")) {
-    if (payload.role !== "inspector") {
-      // Jika dia super admin, lempar ke dashboard admin
-      if (payload.role === "super_admin") {
-        return NextResponse.redirect(new URL("/admin/dashboard", request.url));
-      }
+    if (payload.role !== "inspector" && payload.role !== "super_admin") {
+      // Jika role tidak dikenal, lempar ke login
+      const response = NextResponse.redirect(new URL("/login", request.url));
+      response.cookies.delete("session_token");
+      return response;
+    }
+  }
+
+  // Proteksi Rute Laporan Cetak / Orders
+  if (pathname.startsWith("/orders")) {
+    if (payload.role !== "super_admin" && payload.role !== "inspector") {
       // Jika role tidak dikenal, lempar ke login
       const response = NextResponse.redirect(new URL("/login", request.url));
       response.cookies.delete("session_token");
@@ -88,7 +97,7 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Hanya jalankan middleware pada rute admin, inspector, login, dan root
+// Jalankan middleware pada rute admin, inspector, login, orders, dan root
 export const config = {
-  matcher: ["/admin/:path*", "/inspector/:path*", "/login", "/"],
+  matcher: ["/admin/:path*", "/inspector/:path*", "/orders/:path*", "/login", "/"],
 };

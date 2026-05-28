@@ -217,3 +217,101 @@ export async function PUT(
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+// DELETE: Batalkan / hapus order
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await verifySession();
+    if (!user) {
+      return NextResponse.json({ error: "Akses ditolak" }, { status: 401 });
+    }
+
+    // Hanya super_admin yang boleh menghapus/membatalkan order
+    if (user.role !== "super_admin") {
+      return NextResponse.json({ error: "Hanya admin yang bisa membatalkan order" }, { status: 403 });
+    }
+
+    const { id } = await params;
+
+    // Cek apakah body minta mode "cancel" (soft delete) atau "delete" (hard delete)
+    let mode = "cancel";
+    try {
+      const body = await request.json();
+      if (body.mode === "delete") mode = "delete";
+    } catch {
+      // Jika tidak ada body, default ke cancel
+    }
+
+    // 1. Verifikasi order ada dan cek statusnya
+    const { data: order, error: fetchError } = await supabaseAdmin
+      .from("orders")
+      .select("id, status, order_number")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchError || !order) {
+      return NextResponse.json({ error: "Order tidak ditemukan" }, { status: 404 });
+    }
+
+    // Tidak boleh menghapus/membatalkan order yang sudah selesai
+    if (order.status === "completed") {
+      return NextResponse.json(
+        { error: "Order yang sudah selesai tidak bisa dibatalkan atau dihapus" },
+        { status: 400 }
+      );
+    }
+
+    if (mode === "delete") {
+      // Hard delete: hapus data checklist, hasil review, lalu order
+      await supabaseAdmin
+        .from("inspection_checklist_values")
+        .delete()
+        .eq("order_id", id);
+
+      await supabaseAdmin
+        .from("inspection_results")
+        .delete()
+        .eq("order_id", id);
+
+      const { error: deleteError } = await supabaseAdmin
+        .from("orders")
+        .delete()
+        .eq("id", id);
+
+      if (deleteError) {
+        console.error("Delete order error:", deleteError);
+        return NextResponse.json({ error: "Gagal menghapus order" }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Order ${order.order_number} berhasil dihapus`,
+      });
+    } else {
+      // Soft delete: ubah status menjadi "cancelled"
+      const { error: updateError } = await supabaseAdmin
+        .from("orders")
+        .update({
+          status: "cancelled",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (updateError) {
+        console.error("Cancel order error:", updateError);
+        return NextResponse.json({ error: "Gagal membatalkan order" }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Order ${order.order_number} berhasil dibatalkan`,
+      });
+    }
+  } catch (error: any) {
+    console.error("Delete/Cancel Order API Error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

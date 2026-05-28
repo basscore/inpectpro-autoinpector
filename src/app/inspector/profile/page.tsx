@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   User as UserIcon,
   Lock,
@@ -14,6 +15,7 @@ import {
   Clock,
   Award,
   CheckCircle2,
+  FileText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getOfflineOrders } from "@/lib/offline-db";
@@ -102,7 +104,7 @@ export default function InspectorProfilePage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          oldPassword,
+          currentPassword: oldPassword,
           newPassword,
         }),
       });
@@ -267,6 +269,34 @@ export default function InspectorProfilePage() {
             {changing ? "Memproses..." : "Ganti Password"}
           </button>
         </form>
+      </div>
+
+      {/* Template Management (Fitur baru untuk inspektor!) */}
+      <div className="bg-white rounded-2xl border border-border shadow-xs animate-fade-in delay-2 p-5">
+        <div className="flex items-center gap-3 pb-3 border-b border-border-light">
+          <div className="w-9 h-9 bg-accent/10 rounded-xl flex items-center justify-center">
+            <FileText className="w-5 h-5 text-accent" />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-text-primary">
+              Template Inspeksi
+            </h2>
+            <p className="text-[10px] text-text-tertiary">
+              Kelola acuan & item checklist dinamis
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 space-y-3">
+          <p className="text-xs text-text-secondary leading-relaxed">
+            Buat, duplikasi, arsipkan, atau edit kategori dan poin pemeriksaan checklist inspeksi mobil di lapangan.
+          </p>
+          <Link
+            href="/admin/templates"
+            className="w-full inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent-dark text-white font-semibold py-2.5 rounded-xl transition-all cursor-pointer text-sm shadow-sm hover:shadow-md"
+          >
+            Kelola Template
+          </Link>
+        </div>
       </div>
 
       {/* Logout */}

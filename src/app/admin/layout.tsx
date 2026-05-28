@@ -39,6 +39,7 @@ export default function AdminLayout({
   // Dynamic Profile & Stats
   const [adminName, setAdminName] = useState("Admin");
   const [fullName, setFullName] = useState("Super Admin");
+  const [role, setRole] = useState("super_admin");
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
 
   useEffect(() => {
@@ -51,17 +52,20 @@ export default function AdminLayout({
           if (data.success && data.user) {
             setFullName(data.user.name);
             setAdminName(data.user.name.split(" ")[0]);
-          }
-        }
+            setRole(data.user.role);
 
-        // 2. Fetch Pending Review Orders Count
-        const ordersRes = await fetch("/api/admin/orders");
-        if (ordersRes.ok) {
-          const data = await ordersRes.json();
-          if (data.success && data.orders) {
-            // Filter pending_review orders
-            const pending = data.orders.filter((o: any) => o.status === "pending_review").length;
-            setPendingReviewCount(pending);
+            // 2. Fetch Pending Review Orders Count (Only for super_admin)
+            if (data.user.role === "super_admin") {
+              const ordersRes = await fetch("/api/admin/orders");
+              if (ordersRes.ok) {
+                const data = await ordersRes.json();
+                if (data.success && data.orders) {
+                  // Filter pending_review orders
+                  const pending = data.orders.filter((o: any) => o.status === "pending_review").length;
+                  setPendingReviewCount(pending);
+                }
+              }
+            }
           }
         }
       } catch (err) {
@@ -117,7 +121,7 @@ export default function AdminLayout({
               InpectPro
             </span>
             <span className="block text-[10px] text-slate-400 -mt-0.5 uppercase tracking-widest">
-              Super Admin
+              {role === "inspector" ? "Inspektor" : "Super Admin"}
             </span>
           </div>
           <button
@@ -131,7 +135,13 @@ export default function AdminLayout({
 
         {/* Nav */}
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
+          {(role === "inspector" 
+            ? [
+                { href: "/inspector/dashboard", label: "Kembali ke Beranda", icon: LayoutDashboard },
+                { href: "/admin/templates", label: "Template", icon: FileText },
+              ]
+            : navItems
+          ).map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
             return (
@@ -209,7 +219,9 @@ export default function AdminLayout({
                 <p className="text-sm font-medium text-text-primary leading-tight">
                   {adminName}
                 </p>
-                <p className="text-xs text-text-tertiary leading-tight">Admin</p>
+                <p className="text-xs text-text-tertiary leading-tight">
+                  {role === "inspector" ? "Inspektor" : "Admin"}
+                </p>
               </div>
               <ChevronDown className="w-4 h-4 text-text-tertiary hidden md:block" />
             </button>
@@ -225,7 +237,9 @@ export default function AdminLayout({
                     <p className="text-sm font-medium text-text-primary truncate">
                       {fullName}
                     </p>
-                    <p className="text-xs text-text-tertiary">Super Admin</p>
+                    <p className="text-xs text-text-tertiary">
+                      {role === "inspector" ? "Inspektor" : "Super Admin"}
+                    </p>
                   </div>
                   <Link
                     href="/admin/settings"

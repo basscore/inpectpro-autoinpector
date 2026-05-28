@@ -17,6 +17,11 @@ import {
   Eye,
   Download,
   AlertCircle,
+  XCircle,
+  Trash2,
+  X,
+  AlertTriangle,
+  Play,
 } from "lucide-react";
 import { ORDER_STATUS_CONFIG } from "@/lib/mock-data";
 
@@ -62,6 +67,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // State untuk modal konfirmasi
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmMode, setConfirmMode] = useState<"cancel" | "delete">("cancel");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState("");
+
   const fetchOrderDetail = async () => {
     try {
       setLoading(true);
@@ -80,6 +91,51 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   useEffect(() => {
     fetchOrderDetail();
   }, [id]);
+
+  const handleCancelOrder = () => {
+    setConfirmMode("cancel");
+    setActionError("");
+    setShowConfirmModal(true);
+  };
+
+  const handleDeleteOrder = () => {
+    setConfirmMode("delete");
+    setActionError("");
+    setShowConfirmModal(true);
+  };
+
+  const executeAction = async () => {
+    try {
+      setActionLoading(true);
+      setActionError("");
+
+      const res = await fetch(`/api/admin/orders/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: confirmMode }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal memproses permintaan");
+
+      setShowConfirmModal(false);
+
+      if (confirmMode === "delete") {
+        // Hard delete: kembali ke daftar order
+        router.push("/admin/orders");
+      } else {
+        // Cancel: refresh data order
+        fetchOrderDetail();
+      }
+    } catch (err: any) {
+      setActionError(err.message || "Terjadi kesalahan");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Apakah order bisa dibatalkan/dihapus
+  const canCancelOrDelete = order && order.status !== "completed" && order.status !== "cancelled";
 
   if (loading) {
     return (
@@ -141,6 +197,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         </div>
 
         <div className="flex items-center gap-2">
+          {(order.status === "assigned" || order.status === "in_progress") && (
+            <Link
+              href={`/inspector/orders/${order.id}`}
+              className="inline-flex items-center gap-2 bg-accent hover:bg-accent-dark text-white font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm hover:shadow-md text-sm animate-pulse"
+            >
+              <Play className="w-4 h-4" />
+              Jalankan Inspeksi
+            </Link>
+          )}
           {order.status === "pending_review" && (
             <Link
               href={`/admin/orders/${order.id}/review`}
@@ -151,13 +216,34 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </Link>
           )}
           {order.status === "completed" && (
-            <button
-              onClick={() => alert("Fitur Export PDF Laporan sedang disiapkan.")}
+            <Link
+              href={`/orders/${order.id}/print`}
+              target="_blank"
               className="inline-flex items-center gap-2 bg-primary hover:bg-primary-dark text-white font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm text-sm"
             >
               <Download className="w-4 h-4" />
               Export PDF
-            </button>
+            </Link>
+          )}
+          {canCancelOrDelete && (
+            <>
+              <button
+                onClick={handleCancelOrder}
+                className="inline-flex items-center gap-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer text-sm"
+                title="Batalkan order ini"
+              >
+                <XCircle className="w-4 h-4" />
+                Batalkan
+              </button>
+              <button
+                onClick={handleDeleteOrder}
+                className="inline-flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm hover:shadow-md text-sm"
+                title="Hapus order secara permanen"
+              >
+                <Trash2 className="w-4 h-4" />
+                Hapus
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -317,8 +403,147 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </div>
             </div>
           </div>
+
+          {/* Aksi Cepat (Cancel/Delete) — di sidebar juga */}
+          {canCancelOrDelete && (
+            <div className="bg-white rounded-2xl border border-border shadow-xs animate-fade-in delay-5 opacity-0">
+              <div className="flex items-center gap-3 px-6 py-4 border-b border-border-light">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+                <h2 className="text-base font-semibold text-text-primary">
+                  Zona Bahaya
+                </h2>
+              </div>
+              <div className="p-6 space-y-3">
+                <button
+                  onClick={handleCancelOrder}
+                  className="w-full flex items-center justify-center gap-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer text-sm"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Batalkan Order
+                </button>
+                <button
+                  onClick={handleDeleteOrder}
+                  className="w-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-sm text-sm"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Hapus Permanen
+                </button>
+                <p className="text-xs text-text-tertiary text-center mt-1">
+                  Batalkan = ubah status. Hapus = hilangkan data sepenuhnya.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Modal Konfirmasi */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-scale-in">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  confirmMode === "delete" ? "bg-red-100" : "bg-amber-100"
+                }`}>
+                  {confirmMode === "delete" ? (
+                    <Trash2 className="w-5 h-5 text-red-600" />
+                  ) : (
+                    <XCircle className="w-5 h-5 text-amber-600" />
+                  )}
+                </div>
+                <h3 className="text-lg font-bold text-text-primary">
+                  {confirmMode === "delete" ? "Hapus Order?" : "Batalkan Order?"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="p-2 rounded-lg hover:bg-surface-secondary text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="px-6 py-5 space-y-4">
+              <div className={`p-4 rounded-xl border ${
+                confirmMode === "delete" 
+                  ? "bg-red-50 border-red-200" 
+                  : "bg-amber-50 border-amber-200"
+              }`}>
+                <p className="text-sm font-medium text-text-primary">
+                  {order.order_number} — {order.vehicle.brand} {order.vehicle.model}
+                </p>
+                <p className="text-xs text-text-secondary mt-1">
+                  Klien: {order.client.name} · {order.vehicle.plate_number}
+                </p>
+              </div>
+
+              {confirmMode === "delete" ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-text-secondary">
+                    Tindakan ini akan <strong className="text-red-600">menghapus order secara permanen</strong> beserta seluruh data checklist dan hasil inspeksi yang terkait.
+                  </p>
+                  <p className="text-sm text-red-600 font-medium">
+                    ⚠️ Tindakan ini tidak bisa dibatalkan!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-text-secondary">
+                    Status order akan diubah menjadi <strong className="text-amber-700">&quot;Dibatalkan&quot;</strong>. Data order tetap tersimpan dan bisa dilihat kembali.
+                  </p>
+                </div>
+              )}
+
+              {actionError && (
+                <div className="bg-danger-bg border border-red-200 text-danger text-sm rounded-xl p-3 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {actionError}
+                </div>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div className="flex items-center gap-3 px-6 py-4 border-t border-border-light bg-surface-secondary/50 rounded-b-2xl">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                disabled={actionLoading}
+                className="flex-1 px-4 py-2.5 bg-white border border-border hover:bg-surface-secondary text-text-primary font-semibold rounded-xl text-sm cursor-pointer transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={executeAction}
+                disabled={actionLoading}
+                className={`flex-1 px-4 py-2.5 font-semibold rounded-xl text-sm cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center gap-2 ${
+                  confirmMode === "delete"
+                    ? "bg-red-500 hover:bg-red-600 text-white shadow-sm"
+                    : "bg-amber-500 hover:bg-amber-600 text-white shadow-sm"
+                }`}
+              >
+                {actionLoading ? (
+                  <>
+                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    Memproses...
+                  </>
+                ) : confirmMode === "delete" ? (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Ya, Hapus
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-4 h-4" />
+                    Ya, Batalkan
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -459,4 +459,5 @@ export const ORDER_STATUS_CONFIG: Record<string, { label: string; color: string;
   in_progress: { label: 'Sedang Dikerjakan', color: 'text-amber-700', bg: 'bg-amber-50' },
   pending_review: { label: 'Menunggu Review', color: 'text-purple-700', bg: 'bg-purple-50' },
   completed: { label: 'Selesai', color: 'text-green-700', bg: 'bg-green-50' },
+  cancelled: { label: 'Dibatalkan', color: 'text-red-700', bg: 'bg-red-50' },
 };

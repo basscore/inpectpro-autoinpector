@@ -13,7 +13,7 @@ async function verifyAdminSession() {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
-    if (decoded && decoded.role === "super_admin") {
+    if (decoded && (decoded.role === "super_admin" || decoded.role === "inspector")) {
       return decoded;
     }
   } catch (e) {

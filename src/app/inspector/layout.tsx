@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   ClipboardList,
@@ -10,6 +10,7 @@ import {
   Shield,
   Wifi,
   WifiOff,
+  LogOut,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -25,7 +26,18 @@ export default function InspectorLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isOnline, setIsOnline] = useState(true);
+
+  const handleLogout = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (err) {
+      console.error("Gagal logout:", err);
+    }
+    router.push("/login");
+  };
 
   // Check if currently in inspection mode (hide bottom nav)
   const isInspectionMode = pathname.includes("/inspect");
@@ -66,6 +78,14 @@ export default function InspectorLayout({
               ) : (
                 <WifiOff className="w-4 h-4 text-warning-light" />
               )}
+            </button>
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-lg hover:bg-red-500/20 text-slate-300 hover:text-red-400 transition-colors cursor-pointer"
+              aria-label="Logout"
+              title="Keluar dari Akun"
+            >
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </header>

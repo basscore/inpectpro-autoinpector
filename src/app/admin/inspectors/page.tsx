@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Trash2,
   Power,
+  Pencil,
 } from "lucide-react";
 
 interface Inspector {
@@ -286,6 +287,13 @@ export default function InspectorsPage() {
 
                       {/* Hover Actions */}
                       <div className="hidden group-hover:flex items-center gap-1.5 animate-fade-in">
+                        <Link
+                          href={`/admin/inspectors/${inspector.id}/edit`}
+                          className="p-1.5 rounded-lg bg-slate-50 border border-border text-slate-500 hover:text-accent hover:border-accent/30 hover:bg-accent/5 cursor-pointer flex items-center justify-center transition-all"
+                          title="Edit Profil"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Link>
                         <button
                           onClick={() => handleToggleStatus(inspector)}
                           disabled={isToggling === inspector.id}

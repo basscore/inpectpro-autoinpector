@@ -15,6 +15,7 @@ import {
   Navigation,
   Play,
   WifiOff,
+  Download,
 } from "lucide-react";
 import { ORDER_STATUS_CONFIG } from "@/lib/mock-data";
 import { getOfflineOrderDetail, saveOfflineOrderDetail, queueOfflineUpdate } from "@/lib/offline-db";
@@ -317,6 +318,20 @@ export default function InspectorOrderDetailPage({ params }: { params: Promise<{
               ? "Lanjutkan Inspeksi"
               : "Mulai Inspeksi"}
           </button>
+        </div>
+      )}
+
+      {/* Export PDF CTA */}
+      {order.status === "completed" && (
+        <div className="pt-2 animate-fade-in delay-3">
+          <Link
+            href={`/orders/${order.id}/print`}
+            target="_blank"
+            className="w-full bg-primary hover:bg-primary-dark text-white font-bold text-center py-4 rounded-2xl shadow-lg shadow-primary/20 transition-all cursor-pointer active:scale-[0.98] text-base flex items-center justify-center gap-2"
+          >
+            <Download className="w-5 h-5" />
+            Export PDF Laporan
+          </Link>
         </div>
       )}
     </div>
