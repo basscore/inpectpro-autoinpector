@@ -81,11 +81,12 @@ export default function InspectorLayout({
             </button>
             <button
               onClick={handleLogout}
-              className="p-2 rounded-lg hover:bg-red-500/20 text-slate-300 hover:text-red-400 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-white/10 hover:bg-red-500/20 text-slate-200 hover:text-red-300 text-xs font-medium transition-colors cursor-pointer border border-white/10 hover:border-red-400/30"
               aria-label="Logout"
               title="Keluar dari Akun"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline sm:inline">Keluar</span>
             </button>
           </div>
         </header>
