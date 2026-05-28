@@ -20,6 +20,7 @@ import {
 import type { ChecklistStatus, Severity } from "@/lib/types";
 import { getOfflineOrderDetail, saveOfflineOrderDetail, queueOfflineUpdate } from "@/lib/offline-db";
 import { TopProgressBar, ChecklistSkeleton } from "@/lib/ui";
+import { compressImage } from "@/lib/image-compress";
 
 const statusOptions: { value: ChecklistStatus; icon: typeof CheckCircle2; label: string; color: string; bg: string; activeBg: string }[] = [
   { value: "ok", icon: CheckCircle2, label: "OK", color: "text-success", bg: "bg-success-bg", activeBg: "bg-success text-white" },
@@ -201,11 +202,14 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
 
   const handleUploadPhoto = async (itemId: string, file: File) => {
     setUploadingItem(itemId);
-    setUploadProgress(10);
+    setUploadProgress(5);
 
     try {
+      const compressed = await compressImage(file);
+      setUploadProgress(10);
+
       const form = new FormData();
-      form.append("file", file);
+      form.append("file", compressed);
       form.append("orderId", id);
       form.append("itemId", itemId);
 
