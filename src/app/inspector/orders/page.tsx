@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Car, MapPin, Clock, ClipboardCheck, WifiOff } from "lucide-react";
 import { ORDER_STATUS_CONFIG } from "@/lib/mock-data";
 import { getOfflineOrders, saveOfflineOrders } from "@/lib/offline-db";
+import { ListSkeleton } from "@/lib/ui";
 import type { Order } from "@/lib/types";
 
 export default function InspectorOrdersPage() {
@@ -69,9 +70,7 @@ export default function InspectorOrdersPage() {
       </div>
 
       {loading ? (
-        <div className="bg-white rounded-2xl border border-border p-8 text-center shadow-xs">
-          <p className="text-sm text-text-secondary">Memuat daftar order...</p>
-        </div>
+        <ListSkeleton rows={4} />
       ) : orders.length === 0 ? (
         <div className="bg-white rounded-2xl border border-border p-8 text-center shadow-xs">
           <ClipboardCheck className="w-10 h-10 text-text-tertiary mx-auto mb-3" />

@@ -241,10 +241,11 @@ export async function POST(request: Request) {
             category_name: cat.name,
             item_id: item.id,
             item_name: item.name,
-            status: "na", // Default "N/A"
+            status: null, // Belum diisi
             sort_order: item.sort_order,
             photo_required: item.photo_required,
             severity_required: item.severity_required,
+            is_answered: false,
           });
         });
       });

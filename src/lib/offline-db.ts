@@ -13,10 +13,11 @@ export interface QueuedUpdate {
   vehicle?: any;
   checklist?: Array<{
     id: string; // item_id
-    status: string;
+    status: string | null;
     severity?: string | null;
     notes?: string | null;
     photos?: string[];
+    is_answered?: boolean;
   }>;
   summaryNotes?: string;
   timestamp: number;

@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Camera, WifiOff, Save } from "lucide-react";
 import { getOfflineOrderDetail, saveOfflineOrderDetail, queueOfflineUpdate } from "@/lib/offline-db";
+import { TopProgressBar, OrderDetailSkeleton } from "@/lib/ui";
 
 export default function InspectVehicleDataPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -160,11 +161,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-surface-secondary flex items-center justify-center">
-        <p className="text-sm text-text-secondary">Memuat data...</p>
-      </div>
-    );
+    return <OrderDetailSkeleton />;
   }
 
   if (!order) {
@@ -183,6 +180,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
 
   return (
     <div className="min-h-screen bg-surface-secondary pb-24">
+      <TopProgressBar active={saving} label="Menyimpan data kendaraan..." />
       {/* Top Bar */}
       <div className="sticky top-0 z-30 bg-primary-dark text-white px-4 h-14 flex items-center gap-3 shadow-md">
         <button

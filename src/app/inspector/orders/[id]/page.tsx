@@ -16,9 +16,12 @@ import {
   Play,
   WifiOff,
   Download,
+  ClipboardCheck,
+  Camera,
 } from "lucide-react";
 import { ORDER_STATUS_CONFIG } from "@/lib/mock-data";
 import { getOfflineOrderDetail, saveOfflineOrderDetail, queueOfflineUpdate } from "@/lib/offline-db";
+import { TopProgressBar, OrderDetailSkeleton } from "@/lib/ui";
 
 export default function InspectorOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -112,11 +115,7 @@ export default function InspectorOrderDetailPage({ params }: { params: Promise<{
   };
 
   if (loading) {
-    return (
-      <div className="px-4 py-8 max-w-lg mx-auto text-center min-h-screen flex items-center justify-center">
-        <p className="text-sm text-text-secondary">Memuat detail order...</p>
-      </div>
-    );
+    return <OrderDetailSkeleton />;
   }
 
   if (!order) {
@@ -139,8 +138,26 @@ export default function InspectorOrderDetailPage({ params }: { params: Promise<{
     color: "text-gray-700",
   };
 
+  // Hitung progres checklist
+  const checklistCats: any[] = order.checklist || [];
+  let totalItems = 0;
+  let filledItems = 0;
+  let photoCount = 0;
+  checklistCats.forEach((cat: any) => {
+    (cat.items || []).forEach((item: any) => {
+      totalItems++;
+      if (item.is_answered === true || (item.status != null && item.status !== "")) {
+        filledItems++;
+      }
+      if (Array.isArray(item.photos)) photoCount += item.photos.length;
+    });
+  });
+  const progressPct = totalItems > 0 ? Math.round((filledItems / totalItems) * 100) : 0;
+  const isResuming = order.status === "in_progress" && filledItems > 0;
+
   return (
     <div className="px-4 py-5 max-w-lg mx-auto space-y-4 min-h-screen pb-24">
+      <TopProgressBar active={updating} label="Memuat halaman inspeksi..." />
       {/* Header */}
       <div className="flex items-center gap-3 animate-fade-in">
         <button
@@ -302,6 +319,66 @@ export default function InspectorOrderDetailPage({ params }: { params: Promise<{
           </div>
         </div>
       </div>
+
+      {/* Ringkasan Progres Inspeksi */}
+      {(order.status === "in_progress" || order.status === "pending_review" || order.status === "completed") && totalItems > 0 && (
+        <div className="bg-white rounded-2xl border border-border p-5 shadow-xs animate-fade-in delay-2">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+              <ClipboardCheck className="w-4 h-4 text-accent" />
+              Progres Inspeksi
+            </h3>
+            <span className="text-xs font-semibold text-accent">{progressPct}%</span>
+          </div>
+          <div className="h-2 bg-surface-secondary rounded-full overflow-hidden mb-3">
+            <div
+              className="h-full bg-accent rounded-full transition-all duration-500"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="text-center">
+              <p className="text-lg font-bold text-text-primary">{filledItems}</p>
+              <p className="text-[10px] text-text-tertiary uppercase tracking-wider">Terisi</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-warning">{totalItems - filledItems}</p>
+              <p className="text-[10px] text-text-tertiary uppercase tracking-wider">Belum</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-bold text-text-primary flex items-center justify-center gap-1">
+                <Camera className="w-4 h-4 text-text-tertiary" />
+                {photoCount}
+              </p>
+              <p className="text-[10px] text-text-tertiary uppercase tracking-wider">Foto</p>
+            </div>
+          </div>
+          {checklistCats.length > 0 && order.status === "in_progress" && (
+            <div className="mt-4 pt-4 border-t border-border-light space-y-1.5">
+              {checklistCats.map((cat: any) => {
+                const catFilled = (cat.items || []).filter(
+                  (i: any) => i.is_answered === true || (i.status != null && i.status !== "")
+                ).length;
+                const total = cat.items?.length || 0;
+                const done = catFilled === total && total > 0;
+                return (
+                  <div
+                    key={cat.id}
+                    className="flex items-center justify-between text-xs"
+                  >
+                    <span className={done ? "text-success" : "text-text-secondary"}>
+                      {cat.name}
+                    </span>
+                    <span className={`font-medium ${done ? "text-success" : "text-text-secondary"}`}>
+                      {catFilled}/{total}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Start Inspection CTA */}
       {(order.status === "assigned" || order.status === "in_progress") && (

@@ -15,6 +15,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { getOfflineOrderDetail, saveOfflineOrderDetail, queueOfflineUpdate } from "@/lib/offline-db";
+import { TopProgressBar, SummarySkeleton } from "@/lib/ui";
 
 export default function InspectionSummaryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -92,18 +93,13 @@ export default function InspectionSummaryPage({ params }: { params: Promise<{ id
   checklistCategories.forEach((cat: any) => {
     cat.items.forEach((item: any) => {
       totalItems++;
-      if (item.status === "ok") {
+      const answered = item.is_answered === true || (item.status != null && item.status !== "");
+      if (answered) {
         filledCount++;
-        okCount++;
-      } else if (item.status === "attention") {
-        filledCount++;
-        attentionCount++;
-      } else if (item.status === "problem") {
-        filledCount++;
-        problemCount++;
-      } else if (item.status === "na") {
-        filledCount++;
-        naCount++;
+        if (item.status === "ok") okCount++;
+        else if (item.status === "attention") attentionCount++;
+        else if (item.status === "problem") problemCount++;
+        else if (item.status === "na") naCount++;
       }
       if (item.photos && Array.isArray(item.photos)) {
         photoCount += item.photos.length;
@@ -154,11 +150,7 @@ export default function InspectionSummaryPage({ params }: { params: Promise<{ id
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-surface-secondary flex items-center justify-center">
-        <p className="text-sm text-text-secondary">Memuat ringkasan...</p>
-      </div>
-    );
+    return <SummarySkeleton />;
   }
 
   if (!order) {
@@ -201,6 +193,10 @@ export default function InspectionSummaryPage({ params }: { params: Promise<{ id
 
   return (
     <div className="min-h-screen bg-surface-secondary flex flex-col pb-24">
+      <TopProgressBar
+        active={isSubmitting}
+        label="Mengirim laporan inspeksi..."
+      />
       {/* Top Bar */}
       <div className="sticky top-0 z-30 bg-primary-dark text-white px-4 h-14 flex items-center gap-3 shadow-md">
         <button

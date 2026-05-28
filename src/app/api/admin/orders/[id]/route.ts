@@ -85,12 +85,13 @@ export async function GET(
       categoryMap.get(val.category_id)?.items.push({
         id: val.item_id,
         name: val.item_name,
-        status: val.status,
+        status: val.is_answered ? val.status : null,
         severity: val.severity || null,
         notes: val.notes || "",
         photos: val.photos || [],
         photo_required: val.photo_required,
         severity_required: val.severity_required,
+        is_answered: val.is_answered === true,
       });
     });
 
@@ -190,13 +191,15 @@ export async function PUT(
     // 2. Jika ada pembaruan nilai checklist titik inspeksi (inspektor sedang meng-save progress)
     if (checklist && Array.isArray(checklist) && checklist.length > 0) {
       for (const item of checklist) {
+        const isAnswered = item.is_answered === true || (item.status != null && item.status !== "");
         const { error: upsertError } = await supabaseAdmin
           .from("inspection_checklist_values")
           .update({
-            status: item.status,
+            status: item.status || null,
             severity: item.severity || null,
             notes: item.notes || null,
             photos: item.photos || [],
+            is_answered: isAnswered,
             updated_at: new Date().toISOString(),
           })
           .eq("order_id", id)
