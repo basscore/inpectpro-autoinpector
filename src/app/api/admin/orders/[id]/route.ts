@@ -86,11 +86,9 @@ export async function GET(
         id: val.item_id,
         name: val.item_name,
         status: val.is_answered ? val.status : null,
-        severity: val.severity || null,
         notes: val.notes || "",
         photos: val.photos || [],
         photo_required: val.photo_required,
-        severity_required: val.severity_required,
         is_answered: val.is_answered === true,
       });
     });
@@ -199,7 +197,6 @@ export async function PUT(
             .from("inspection_checklist_values")
             .update({
               status: item.status || null,
-              severity: item.severity || null,
               notes: item.notes || null,
               photos: item.photos || [],
               is_answered: isAnswered,

@@ -16,7 +16,7 @@ import {
   X,
   Trash2,
 } from "lucide-react";
-import type { ChecklistStatus, Severity } from "@/lib/types";
+import type { ChecklistStatus } from "@/lib/types";
 import { saveOfflineOrderDetail, queueOfflineUpdate, loadOrderDetailCacheFirst } from "@/lib/offline-db";
 import { TopProgressBar, ChecklistSkeleton } from "@/lib/ui";
 import { compressImage } from "@/lib/image-compress";
@@ -30,7 +30,6 @@ const statusOptions: { value: ChecklistStatus; icon: typeof CheckCircle2; label:
 interface ItemState {
   id: string;
   status: ChecklistStatus | null;
-  severity: Severity | null;
   notes: string;
   photos: string[];
   is_answered: boolean;
@@ -121,7 +120,6 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
         incomingStates[item.id] = {
           id: item.id,
           status: validStatus,
-          severity: item.severity || null,
           notes: item.notes || "",
           photos: item.photos || [],
           is_answered: item.is_answered === true || validStatus !== null,
@@ -160,12 +158,12 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
   }, [id]);
 
   const getItemState = (itemId: string): ItemState =>
-    itemStates[itemId] || { id: itemId, status: null, severity: null, notes: "", photos: [], is_answered: false };
+    itemStates[itemId] || { id: itemId, status: null, notes: "", photos: [], is_answered: false };
 
   const updateItemState = (itemId: string, updates: Partial<ItemState>) => {
     dirtyItemsRef.current.add(itemId);
     setItemStates((prev) => {
-      const current = prev[itemId] || { id: itemId, status: null, severity: null, notes: "", photos: [], is_answered: false };
+      const current = prev[itemId] || { id: itemId, status: null, notes: "", photos: [], is_answered: false };
       const next = { ...current, ...updates };
       // Auto-tandai sebagai answered jika status ada
       if (next.status != null) next.is_answered = true;
@@ -181,7 +179,6 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
       .map((s) => ({
         id: s.id,
         status: s.status,
-        severity: s.severity,
         notes: s.notes,
         photos: s.photos,
         is_answered: s.is_answered,
@@ -393,7 +390,6 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
         [data.item.id]: {
           id: data.item.id,
           status: null,
-          severity: null,
           notes: "",
           photos: [],
           is_answered: false,
@@ -684,7 +680,6 @@ export default function ChecklistPage({ params }: { params: Promise<{ id: string
                         onClick={() =>
                           updateItemState(item.id, {
                             status: isSelected ? null : opt.value,
-                            severity: null,
                             is_answered: isSelected ? false : true,
                           })
                         }

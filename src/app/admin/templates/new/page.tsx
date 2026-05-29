@@ -17,7 +17,6 @@ interface Item {
   name: string;
   description: string;
   photo_required: boolean;
-  severity_required: boolean;
 }
 
 interface Category {
@@ -33,7 +32,7 @@ export default function NewTemplatePage() {
     {
       name: "Eksterior",
       items: [
-        { name: "Body depan", description: "Cek penyok dan goresan", photo_required: true, severity_required: true },
+        { name: "Body depan", description: "Cek penyok dan goresan", photo_required: true },
       ],
     },
   ]);
@@ -64,7 +63,6 @@ export default function NewTemplatePage() {
       name: "",
       description: "",
       photo_required: true,
-      severity_required: true,
     });
     setCategories(updated);
   };
@@ -210,7 +208,6 @@ export default function NewTemplatePage() {
               name: item.name,
               description: item.description || undefined,
               photo_required: item.photo_required,
-              severity_required: item.severity_required,
               order: itemIdx + 1,
             })),
           })),
@@ -440,15 +437,6 @@ export default function NewTemplatePage() {
                           className="w-3.5 h-3.5 accent-accent cursor-pointer"
                         />
                         Wajib Foto
-                      </label>
-                      <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={item.severity_required}
-                          onChange={(e) => handleItemChange(catIdx, itemIdx, "severity_required", e.target.checked)}
-                          className="w-3.5 h-3.5 accent-accent cursor-pointer"
-                        />
-                        Wajib Severity
                       </label>
                       <button
                         type="button"

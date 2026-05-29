@@ -219,7 +219,6 @@ export async function POST(request: Request) {
           name,
           description,
           photo_required,
-          severity_required,
           sort_order
         )
       `)
@@ -244,7 +243,6 @@ export async function POST(request: Request) {
             status: null, // Belum diisi
             sort_order: item.sort_order,
             photo_required: item.photo_required,
-            severity_required: item.severity_required,
             is_answered: false,
           });
         });

@@ -14,7 +14,6 @@ export interface QueuedUpdate {
   checklist?: Array<{
     id: string; // item_id
     status: string | null;
-    severity?: string | null;
     notes?: string | null;
     photos?: string[];
     is_answered?: boolean;

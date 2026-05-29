@@ -16,8 +16,6 @@ export type OrderStatus =
 
 export type ChecklistStatus = 'ok' | 'attention' | 'problem' | 'na';
 
-export type Severity = 'ringan' | 'sedang' | 'berat';
-
 export type TransmissionType = 'manual' | 'automatic';
 
 export type FuelType = 'bensin' | 'diesel' | 'hybrid' | 'electric';
@@ -88,7 +86,6 @@ export interface TemplateItem {
   name: string;
   description?: string;
   photo_required: boolean;
-  severity_required: boolean;
   order: number;
 }
 
@@ -137,11 +134,9 @@ export interface InspectionItem {
   name: string;
   description?: string;
   status: ChecklistStatus;
-  severity?: Severity;
   notes?: string;
   photos: string[];
   photo_required: boolean;
-  severity_required: boolean;
 }
 
 // --- Stats ---

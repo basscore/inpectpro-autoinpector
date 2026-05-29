@@ -23,7 +23,6 @@ interface ChecklistItem {
   id: string;
   name: string;
   status: string;
-  severity: string | null;
   notes: string;
   photos: string[];
 }
@@ -144,7 +143,7 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
     cat.items.forEach((item) => {
       if (item.status === "ok") okCount++;
       else if (item.status === "attention") attentionCount++;
-      else if (item.status === "danger") problemCount++;
+      else if (item.status === "problem") problemCount++;
       else naCount++;
     });
   });
@@ -382,7 +381,7 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
                       <p className="text-[10px] text-slate-400 font-medium">Titik Cek #{item.id.substring(0, 4)}</p>
                     </div>
 
-                    {/* Status & Severity */}
+                    {/* Status */}
                     <div className="sm:col-span-2">
                       {item.status === "ok" && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md print:bg-white print:border-emerald-500">
@@ -394,7 +393,7 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" /> Perhatian
                         </span>
                       )}
-                      {item.status === "danger" && (
+                      {item.status === "problem" && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded-md print:bg-white print:border-red-500">
                           <XCircle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" /> Bermasalah
                         </span>
@@ -405,11 +404,6 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
                         </span>
                       )}
 
-                      {item.severity && item.status !== "ok" && item.status !== "na" && (
-                        <p className="text-[9px] uppercase tracking-wider font-extrabold text-red-600 mt-1">
-                          Severity: {item.severity}
-                        </p>
-                      )}
                     </div>
 
                     {/* Catatan / Keterangan Temuan */}

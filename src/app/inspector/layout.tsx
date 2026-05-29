@@ -11,6 +11,7 @@ import {
   Wifi,
   WifiOff,
   LogOut,
+  ArrowLeft,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -28,6 +29,22 @@ export default function InspectorLayout({
   const pathname = usePathname();
   const router = useRouter();
   const [isOnline, setIsOnline] = useState(true);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.user?.role === "super_admin") {
+          setIsSuperAdmin(true);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleLogout = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -50,6 +67,24 @@ export default function InspectorLayout({
 
   return (
     <div className="min-h-screen flex flex-col bg-surface-secondary">
+      {/* Banner Super Admin — selalu sediakan pintu balik ke dashboard admin */}
+      {isSuperAdmin && (
+        <div className="bg-primary-dark text-white text-xs font-medium py-2 px-4 flex items-center justify-center gap-3 animate-slide-in-down">
+          <Shield className="w-3.5 h-3.5 text-accent-light flex-shrink-0" />
+          <span className="opacity-90 hidden sm:inline">
+            Anda super admin sedang melihat area inspektor.
+          </span>
+          <span className="opacity-90 sm:hidden">Mode super admin</span>
+          <Link
+            href="/admin/dashboard"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 transition-colors cursor-pointer font-semibold"
+          >
+            <ArrowLeft className="w-3 h-3" />
+            Kembali ke Admin
+          </Link>
+        </div>
+      )}
+
       {/* Offline banner */}
       {!isOnline && (
         <div className="bg-warning text-white text-xs font-medium text-center py-2 px-4 flex items-center justify-center gap-2 animate-slide-in-down">

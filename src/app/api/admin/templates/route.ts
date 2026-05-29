@@ -50,7 +50,6 @@ export async function GET() {
             name,
             description,
             photo_required,
-            severity_required,
             order:sort_order
           )
         )
@@ -128,7 +127,6 @@ export async function POST(request: Request) {
             name: item.name,
             description: item.description || null,
             photo_required: item.photo_required ?? true,
-            severity_required: item.severity_required ?? true,
             sort_order: item.order !== undefined ? item.order : itemIdx + 1,
           }));
 

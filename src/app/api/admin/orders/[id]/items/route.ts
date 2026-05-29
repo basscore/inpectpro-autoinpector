@@ -58,7 +58,6 @@ export async function POST(
         status: null,
         sort_order: nextSort,
         photo_required: false,
-        severity_required: false,
         is_answered: false,
       })
       .select("*")
@@ -75,11 +74,9 @@ export async function POST(
         id: inserted.item_id,
         name: inserted.item_name,
         status: inserted.status,
-        severity: null,
         notes: "",
         photos: [],
         photo_required: inserted.photo_required,
-        severity_required: inserted.severity_required,
         is_answered: false,
       },
     });

@@ -18,6 +18,8 @@ import {
   ChevronUp,
   Check,
   ImageIcon,
+  Car,
+  Pencil,
 } from "lucide-react";
 
 const STATUS_OPTIONS: { value: "ok" | "attention" | "problem" | "na"; label: string; color: string; bg: string; ring: string }[] = [
@@ -34,21 +36,13 @@ const STATUS_ICON: Record<string, any> = {
   na: Minus,
 };
 
-const SEVERITY_OPTIONS: { value: "ringan" | "sedang" | "berat"; label: string; color: string; bg: string }[] = [
-  { value: "ringan", label: "Ringan", color: "text-amber-700", bg: "bg-amber-50 border-amber-200" },
-  { value: "sedang", label: "Sedang", color: "text-orange-700", bg: "bg-orange-50 border-orange-200" },
-  { value: "berat", label: "Berat", color: "text-red-700", bg: "bg-red-50 border-red-200" },
-];
-
 interface InspectionItem {
   id: string;
   name: string;
   status: "ok" | "attention" | "problem" | "na" | null;
-  severity?: "ringan" | "sedang" | "berat" | null;
   notes?: string;
   photos: string[];
   photo_required?: boolean;
-  severity_required?: boolean;
   is_answered?: boolean;
 }
 
@@ -58,12 +52,26 @@ interface InspectionCategory {
   items: InspectionItem[];
 }
 
+interface Vehicle {
+  brand: string;
+  model: string;
+  type?: string;
+  year: number;
+  plate_number: string;
+  chassis_number?: string;
+  engine_number?: string;
+  odometer_km: number;
+  color: string;
+  transmission: string;
+  fuel_type: string;
+}
+
 interface Order {
   id: string;
   order_number: string;
   status: string;
   client: { name: string };
-  vehicle: { brand: string; model: string };
+  vehicle: Vehicle;
   checklist: InspectionCategory[];
   review?: {
     overall_score?: number;
@@ -106,6 +114,12 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetRef = useRef<string | null>(null);
+
+  // Modal edit data kendaraan
+  const [showVehicleModal, setShowVehicleModal] = useState(false);
+  const [vehicleForm, setVehicleForm] = useState<Vehicle | null>(null);
+  const [vehicleSaving, setVehicleSaving] = useState(false);
+  const [vehicleError, setVehicleError] = useState("");
 
   const fetchOrderDetail = async () => {
     try {
@@ -160,7 +174,6 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
       cat.items.map((it) => ({
         id: it.id,
         status: it.status,
-        severity: it.severity || null,
         notes: it.notes || "",
         photos: it.photos || [],
         is_answered: it.status != null && it.status !== ("" as any),
@@ -341,6 +354,38 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
     }
   };
 
+  const openVehicleEditor = () => {
+    if (!order) return;
+    setVehicleForm({ ...order.vehicle });
+    setVehicleError("");
+    setShowVehicleModal(true);
+  };
+
+  const submitVehicleEdit = async () => {
+    if (!vehicleForm) return;
+    if (!vehicleForm.brand?.trim() || !vehicleForm.model?.trim() || !vehicleForm.plate_number?.trim()) {
+      setVehicleError("Merk, Model, dan Plat Nomor wajib diisi");
+      return;
+    }
+    try {
+      setVehicleSaving(true);
+      setVehicleError("");
+      const res = await fetch(`/api/admin/orders/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vehicle: vehicleForm }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal menyimpan data kendaraan");
+      setShowVehicleModal(false);
+      await fetchOrderDetail();
+    } catch (err: any) {
+      setVehicleError(err.message || "Gagal menghubungkan ke server");
+    } finally {
+      setVehicleSaving(false);
+    }
+  };
+
   const removePhoto = (categoryId: string, itemId: string, photoUrl: string) => {
     setCategories((prev) =>
       prev.map((cat) =>
@@ -466,6 +511,64 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
           <button onClick={() => setSavedMsg("")} className="text-success hover:opacity-70 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* Data Kendaraan — bisa diedit super admin saat ada koreksi */}
+      {order && (
+        <div className="bg-white rounded-2xl border border-border shadow-xs">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
+            <div className="flex items-center gap-3">
+              <Car className="w-5 h-5 text-text-secondary" />
+              <h2 className="text-base font-semibold text-text-primary">Data Kendaraan</h2>
+            </div>
+            <button
+              onClick={openVehicleEditor}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-border hover:bg-surface-secondary text-text-primary text-xs font-semibold cursor-pointer transition-colors"
+              title="Edit data kendaraan"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Edit
+            </button>
+          </div>
+          <div className="p-6">
+            <div className="flex items-center gap-4 mb-5">
+              <div className="w-12 h-12 bg-surface-tertiary rounded-2xl flex items-center justify-center">
+                <Car className="w-6 h-6 text-text-secondary" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-text-primary">
+                  {order.vehicle.brand} {order.vehicle.model} {order.vehicle.type || ""}
+                </h3>
+                <p className="text-xs text-text-secondary">
+                  {order.vehicle.year} · {order.vehicle.color} ·{" "}
+                  {order.vehicle.transmission === "automatic" ? "Otomatis" : "Manual"}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { label: "Plat Nomor", value: order.vehicle.plate_number },
+                {
+                  label: "Odometer",
+                  value: `${(order.vehicle.odometer_km || 0).toLocaleString("id-ID")} km`,
+                },
+                { label: "No. Rangka", value: order.vehicle.chassis_number || "Tidak diisi" },
+                { label: "No. Mesin", value: order.vehicle.engine_number || "Tidak diisi" },
+                {
+                  label: "Bahan Bakar",
+                  value: order.vehicle.fuel_type === "bensin" ? "Bensin" : order.vehicle.fuel_type,
+                },
+              ].map((item) => (
+                <div key={item.label}>
+                  <p className="text-xs text-text-tertiary uppercase tracking-wider">
+                    {item.label}
+                  </p>
+                  <p className="text-sm font-medium text-text-primary mt-0.5">{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -622,8 +725,6 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                   )}
                   {catItems.map((item) => {
                     const selectedStatus = item.status;
-                    const needsSeverity =
-                      selectedStatus === "attention" || selectedStatus === "problem";
                     return (
                       <div key={item.id} className="px-6 py-5 space-y-3">
                         <div className="flex items-start justify-between gap-3">
@@ -655,14 +756,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                               <button
                                 key={s.value}
                                 onClick={() =>
-                                  updateItem(category.id, item.id, {
-                                    status: s.value,
-                                    // Reset severity bila status bukan attention/problem
-                                    severity:
-                                      s.value === "attention" || s.value === "problem"
-                                        ? item.severity ?? null
-                                        : null,
-                                  })
+                                  updateItem(category.id, item.id, { status: s.value })
                                 }
                                 className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border transition-all cursor-pointer text-xs font-semibold ${
                                   active
@@ -676,35 +770,6 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                             );
                           })}
                         </div>
-
-                        {/* Tombol severity */}
-                        {needsSeverity && (
-                          <div>
-                            <p className="text-xs font-medium text-text-secondary mb-1.5">
-                              Tingkat keparahan
-                            </p>
-                            <div className="grid grid-cols-3 gap-2">
-                              {SEVERITY_OPTIONS.map((sv) => {
-                                const active = item.severity === sv.value;
-                                return (
-                                  <button
-                                    key={sv.value}
-                                    onClick={() =>
-                                      updateItem(category.id, item.id, { severity: sv.value })
-                                    }
-                                    className={`py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                                      active
-                                        ? `${sv.bg} ${sv.color} ring-2 ring-current/30`
-                                        : "bg-white border-border text-text-secondary hover:bg-surface-secondary"
-                                    }`}
-                                  >
-                                    {sv.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
 
                         {/* Catatan */}
                         <div>
@@ -841,6 +906,168 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                   <>
                     <Plus className="w-4 h-4" />
                     Tambah Item
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Modal Edit Data Kendaraan ===== */}
+      {showVehicleModal && vehicleForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col animate-scale-in">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Car className="w-5 h-5 text-primary" />
+                </div>
+                <h3 className="text-lg font-bold text-text-primary">Edit Data Kendaraan</h3>
+              </div>
+              <button
+                onClick={() => setShowVehicleModal(false)}
+                disabled={vehicleSaving}
+                className="p-2 rounded-lg hover:bg-surface-secondary text-text-tertiary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Merk *</label>
+                  <input
+                    value={vehicleForm.brand}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, brand: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Model *</label>
+                  <input
+                    value={vehicleForm.model}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, model: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Tipe</label>
+                  <input
+                    value={vehicleForm.type || ""}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, type: e.target.value })}
+                    placeholder="contoh: AT, MT, Sport"
+                    className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Tahun</label>
+                  <input
+                    type="number"
+                    value={vehicleForm.year}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, year: Number(e.target.value) })}
+                    className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Plat Nomor *</label>
+                  <input
+                    value={vehicleForm.plate_number}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, plate_number: e.target.value.toUpperCase() })}
+                    placeholder="B 1234 ABC"
+                    className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm font-mono uppercase focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Warna</label>
+                  <input
+                    value={vehicleForm.color}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, color: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Odometer (km)</label>
+                  <input
+                    type="number"
+                    value={vehicleForm.odometer_km}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, odometer_km: Number(e.target.value) })}
+                    className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Transmisi</label>
+                  <select
+                    value={vehicleForm.transmission}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, transmission: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all cursor-pointer"
+                  >
+                    <option value="manual">Manual</option>
+                    <option value="automatic">Otomatis</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">Bahan Bakar</label>
+                  <select
+                    value={vehicleForm.fuel_type}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, fuel_type: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all cursor-pointer"
+                  >
+                    <option value="bensin">Bensin</option>
+                    <option value="diesel">Diesel</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="listrik">Listrik</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">No. Rangka</label>
+                  <input
+                    value={vehicleForm.chassis_number || ""}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, chassis_number: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm font-mono focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-text-secondary mb-1.5">No. Mesin</label>
+                  <input
+                    value={vehicleForm.engine_number || ""}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, engine_number: e.target.value })}
+                    className="w-full px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm font-mono focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              {vehicleError && (
+                <div className="bg-danger-bg border border-red-200 text-danger text-sm rounded-xl p-3 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {vehicleError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 px-6 py-4 border-t border-border-light bg-surface-secondary/50 rounded-b-2xl">
+              <button
+                onClick={() => setShowVehicleModal(false)}
+                disabled={vehicleSaving}
+                className="flex-1 px-4 py-2.5 bg-white border border-border hover:bg-surface-secondary text-text-primary font-semibold rounded-xl text-sm cursor-pointer transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={submitVehicleEdit}
+                disabled={vehicleSaving}
+                className="flex-1 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white font-semibold rounded-xl text-sm cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {vehicleSaving ? (
+                  <>
+                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    Menyimpan...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Simpan
                   </>
                 )}
               </button>
