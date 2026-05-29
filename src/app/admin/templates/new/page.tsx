@@ -82,58 +82,49 @@ export default function NewTemplatePage() {
     setCategories(updated);
   };
 
-  // Drag & Drop Category Handlers
+  // Drag & Drop: susun ulang langsung saat hover agar terasa mulus.
+  const resetDrag = () => {
+    setDraggedCatIdx(null);
+    setDraggedItemCoords(null);
+  };
+
   const handleCatDragStart = (idx: number) => {
     setDraggedCatIdx(idx);
   };
 
-  const handleCatDragOver = (e: React.DragEvent, idx: number) => {
+  const handleCatDragOver = (e: React.DragEvent, targetIdx: number) => {
     e.preventDefault();
+    if (draggedCatIdx === null || draggedCatIdx === targetIdx) return;
+    setCategories((prev) => {
+      const updated = [...prev];
+      const [moved] = updated.splice(draggedCatIdx, 1);
+      updated.splice(targetIdx, 0, moved);
+      return updated;
+    });
+    setDraggedCatIdx(targetIdx);
   };
 
-  const handleCatDrop = (idx: number) => {
-    if (draggedCatIdx === null || draggedCatIdx === idx) return;
-    const updated = [...categories];
-    const draggedCat = updated[draggedCatIdx];
-    updated.splice(draggedCatIdx, 1);
-    updated.splice(idx, 0, draggedCat);
-    setCategories(updated);
-    setDraggedCatIdx(null);
-  };
-
-  // Drag & Drop Item Handlers
   const handleItemDragStart = (catIdx: number, itemIdx: number) => {
     setDraggedItemCoords({ catIdx, itemIdx });
   };
 
-  const handleItemDragOver = (e: React.DragEvent) => {
+  const handleItemDragOver = (
+    e: React.DragEvent,
+    targetCatIdx: number,
+    targetItemIdx: number
+  ) => {
     e.preventDefault();
-  };
-
-  const handleItemDrop = (targetCatIdx: number, targetItemIdx?: number) => {
     if (!draggedItemCoords) return;
-    const { catIdx: sourceCatIdx, itemIdx: sourceItemIdx } = draggedItemCoords;
-
-    if (sourceCatIdx === targetCatIdx && sourceItemIdx === targetItemIdx) {
-      setDraggedItemCoords(null);
-      return;
-    }
-
-    const updated = [...categories];
-    const itemToMove = updated[sourceCatIdx].items[sourceItemIdx];
-
-    // Remove from source list
-    updated[sourceCatIdx].items.splice(sourceItemIdx, 1);
-
-    // Insert into target list
-    if (targetItemIdx !== undefined) {
-      updated[targetCatIdx].items.splice(targetItemIdx, 0, itemToMove);
-    } else {
-      updated[targetCatIdx].items.push(itemToMove);
-    }
-
-    setCategories(updated);
-    setDraggedItemCoords(null);
+    const { catIdx: sc, itemIdx: si } = draggedItemCoords;
+    if (sc === targetCatIdx && si === targetItemIdx) return;
+    setCategories((prev) => {
+      const updated = prev.map((c) => ({ ...c, items: [...c.items] }));
+      const [moved] = updated[sc].items.splice(si, 1);
+      const insertAt = Math.min(targetItemIdx, updated[targetCatIdx].items.length);
+      updated[targetCatIdx].items.splice(insertAt, 0, moved);
+      return updated;
+    });
+    setDraggedItemCoords({ catIdx: targetCatIdx, itemIdx: targetItemIdx });
   };
 
   const handleSave = async () => {
@@ -320,19 +311,15 @@ export default function NewTemplatePage() {
               handleCatDragStart(catIdx);
             }}
             onDragOver={(e) => handleCatDragOver(e, catIdx)}
-            onDrop={() => {
-              if (draggedItemCoords) {
-                handleItemDrop(catIdx);
-              } else {
-                handleCatDrop(catIdx);
-              }
+            onDrop={(e) => {
+              e.preventDefault();
+              resetDrag();
             }}
-            onDragEnd={() => {
-              setDraggedCatIdx(null);
-              setDraggedItemCoords(null);
-            }}
-            className={`bg-white rounded-2xl border shadow-xs overflow-hidden transition-all duration-200 ${
-              draggedCatIdx === catIdx ? "border-accent/40 opacity-40 scale-[0.99] shadow-inner" : "border-border"
+            onDragEnd={resetDrag}
+            className={`bg-white rounded-2xl border shadow-xs overflow-hidden transition-all duration-150 ${
+              draggedCatIdx === catIdx
+                ? "border-accent ring-2 ring-accent/30 shadow-lg select-none"
+                : "border-border"
             }`}
           >
             {/* Category Header */}
@@ -371,8 +358,15 @@ export default function NewTemplatePage() {
             <div className="p-6 divide-y divide-border-light space-y-4 divide-y-reverse">
               {cat.items.length === 0 ? (
                 <div
-                  onDragOver={(e) => handleItemDragOver(e)}
-                  onDrop={() => handleItemDrop(catIdx)}
+                  onDragOver={(e) => {
+                    e.stopPropagation();
+                    handleItemDragOver(e, catIdx, 0);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    resetDrag();
+                  }}
                   className="text-xs text-text-tertiary text-center py-6 border border-dashed border-border rounded-xl bg-slate-50/50 hover:bg-slate-50 transition-colors"
                 >
                   Belum ada titik pemeriksaan di kategori ini. Tarik pemeriksaan ke sini atau klik "+ Pemeriksaan" di atas.
@@ -396,20 +390,22 @@ export default function NewTemplatePage() {
                       e.stopPropagation();
                       handleItemDragStart(catIdx, itemIdx);
                     }}
-                    onDragOver={(e) => handleItemDragOver(e)}
-                    onDrop={(e) => {
-                      if (!draggedItemCoords) return;
+                    onDragOver={(e) => {
                       e.stopPropagation();
-                      handleItemDrop(catIdx, itemIdx);
+                      handleItemDragOver(e, catIdx, itemIdx);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      resetDrag();
                     }}
                     onDragEnd={(e) => {
                       e.stopPropagation();
-                      setDraggedItemCoords(null);
-                      setDraggedCatIdx(null);
+                      resetDrag();
                     }}
-                    className={`pt-4 first:pt-0 flex flex-col md:flex-row gap-4 items-start transition-all duration-200 ${
+                    className={`pt-4 first:pt-0 flex flex-col md:flex-row gap-4 items-start transition-all duration-150 ${
                       draggedItemCoords?.catIdx === catIdx && draggedItemCoords?.itemIdx === itemIdx
-                        ? "opacity-35 scale-[0.98] bg-slate-50/50 p-2 rounded-xl border border-dashed border-accent/25"
+                        ? "bg-accent/5 ring-2 ring-accent/40 rounded-xl shadow-sm p-2 select-none"
                         : ""
                     }`}
                   >
