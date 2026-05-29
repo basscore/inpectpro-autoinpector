@@ -379,7 +379,7 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
                   <p className="text-slate-800 mt-1">{order.review.summary}</p>
                 </div>
                 <div>
-                  <p className="text-slate-500 font-bold">Rekomendasi Ahli:</p>
+                  <p className="text-slate-500 font-bold">Rekomendasi Perbaikan dan Estimasi Biaya:</p>
                   <p className="text-slate-800 mt-1 bg-white p-3 rounded-xl border border-slate-200">{order.review.recommendation}</p>
                 </div>
               </div>
