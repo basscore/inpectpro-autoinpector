@@ -397,22 +397,24 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
           </div>
 
           {order.checklist.map((cat) => (
-            <div key={cat.id} className="space-y-3">
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-slate-200 pb-1.5 flex items-center justify-between print:break-after-avoid">
-                <span>{cat.name}</span>
-                <span className="text-[10px] font-normal text-slate-400 normal-case">{cat.items.length} Titik Cek</span>
+            <div key={cat.id} className="rounded-2xl border border-slate-200 overflow-hidden">
+              <h3 className="bg-primary text-white px-4 py-3 text-sm font-bold uppercase tracking-wider flex items-center justify-between gap-3 print:break-after-avoid">
+                <span className="flex items-center gap-2">
+                  <span className="w-1.5 h-4 bg-accent rounded-full flex-shrink-0" />
+                  {cat.name}
+                </span>
+                <span className="text-[10px] font-medium text-slate-300 normal-case flex-shrink-0">{cat.items.length} Titik Cek</span>
               </h3>
 
-              <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100">
+              <div className="divide-y divide-slate-100">
                 {cat.items.map((item) => (
                   <div
                     key={item.id}
                     className="p-4 bg-white grid sm:grid-cols-12 gap-4 items-start print:py-3 print:px-4 print:break-inside-avoid"
                   >
                     {/* Nama Poin Checklist */}
-                    <div className="sm:col-span-3 space-y-1">
+                    <div className="sm:col-span-3">
                       <p className="text-xs font-bold text-slate-800">{item.name}</p>
-                      <p className="text-[10px] text-slate-400 font-medium">Titik Cek #{item.id.substring(0, 4)}</p>
                     </div>
 
                     {/* Status */}
@@ -474,7 +476,7 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
           <p className="text-[10px] text-slate-400 leading-relaxed max-w-lg mx-auto">
             Laporan ini dihasilkan oleh sistem InpectPro berdasarkan hasil inspeksi lapangan oleh{" "}
             <span className="font-semibold text-slate-500">{order.inspector_name}</span>
-            {order.review ? " dan telah ditinjau oleh tim Super Admin." : "."}
+            {order.review ? " dan telah ditinjau oleh tim InpectPro." : "."}
           </p>
           <p className="text-[9px] text-slate-300 mt-2 uppercase tracking-widest font-semibold">
             InpectPro · Automotive Inspection
