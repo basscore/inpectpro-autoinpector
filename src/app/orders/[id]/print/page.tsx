@@ -1,23 +1,18 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Car,
-  Calendar,
-  MapPin,
-  Clock,
   Printer,
   ArrowLeft,
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  FileText,
   User,
   Shield,
   Layers,
 } from "lucide-react";
-import { ORDER_STATUS_CONFIG } from "@/lib/mock-data";
 
 interface ChecklistItem {
   id: string;
@@ -76,7 +71,8 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [isRendered, setIsRendered] = useState(false);
+  const articleRef = useRef<HTMLDivElement>(null);
+  const hasPrinted = useRef(false);
 
   useEffect(() => {
     const fetchReportData = async () => {
@@ -96,15 +92,46 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
     fetchReportData();
   }, [id]);
 
-  // Pemicu otomatis untuk dialog cetak browser
+  // Pemicu otomatis dialog cetak — tunggu SEMUA gambar selesai dimuat dulu
+  // agar foto lampiran tidak hilang di hasil PDF.
   useEffect(() => {
-    if (order && !loading && !error) {
-      const timer = setTimeout(() => {
-        setIsRendered(true);
-        window.print();
-      }, 1500); // Tunggu render dom dan gambar selesai dimuat
-      return () => clearTimeout(timer);
-    }
+    if (!order || loading || error || hasPrinted.current) return;
+
+    let cancelled = false;
+
+    const triggerPrint = () => {
+      if (cancelled || hasPrinted.current) return;
+      hasPrinted.current = true;
+      window.print();
+    };
+
+    const waitForImages = async () => {
+      // Beri waktu DOM render dulu
+      await new Promise((r) => setTimeout(r, 100));
+      const imgs = Array.from(articleRef.current?.querySelectorAll("img") ?? []);
+      await Promise.all(
+        imgs.map(
+          (img) =>
+            new Promise<void>((resolve) => {
+              if (img.complete && img.naturalWidth > 0) return resolve();
+              img.addEventListener("load", () => resolve(), { once: true });
+              img.addEventListener("error", () => resolve(), { once: true });
+            })
+        )
+      );
+      // Buffer kecil untuk layout & font
+      await new Promise((r) => setTimeout(r, 400));
+      triggerPrint();
+    };
+
+    // Fallback maksimum 6 detik agar tidak menggantung selamanya
+    const fallback = setTimeout(triggerPrint, 6000);
+    waitForImages();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(fallback);
+    };
   }, [order, loading, error]);
 
   if (loading) {
@@ -148,6 +175,12 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
     });
   });
 
+  const score = order.review?.overall_score ?? 0;
+  const scoreLabel =
+    score >= 85 ? "Kondisi Prima" : score >= 70 ? "Kondisi Baik" : score >= 50 ? "Perlu Perhatian" : "Perlu Perbaikan";
+  const scoreTone =
+    score >= 70 ? "text-emerald-600" : score >= 50 ? "text-amber-600" : "text-red-600";
+
   return (
     <div className="min-h-screen bg-slate-100 py-6 px-4 sm:px-6 md:py-10 md:px-8 print:bg-white print:p-0 print:m-0">
       {/* Tombol Aksi Web (Hanya Tampil di Layar Browser) */}
@@ -171,14 +204,17 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
       </div>
 
       {/* Konten Utama Laporan */}
-      <article className="max-w-4xl mx-auto bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-10 md:p-12 print:border-none print:shadow-none print:p-0 print:rounded-none">
-        
+      <article
+        ref={articleRef}
+        className="report-doc max-w-4xl mx-auto bg-white rounded-3xl border border-slate-200/80 shadow-md p-6 sm:p-10 md:p-12 print:border-none print:shadow-none print:p-0 print:rounded-none"
+      >
+
         {/* Halaman 1: Cover / Ringkasan Utama Laporan */}
-        <section className="space-y-8 pb-10 border-b border-slate-200 print:min-h-[297mm] print:pb-0 print:border-none">
+        <section className="space-y-8 pb-10 print:pb-0">
           {/* Cover Header */}
           <div className="flex items-start justify-between border-b border-slate-200 pb-6">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-primary-dark text-white rounded-2xl flex items-center justify-center shadow-md shadow-primary/20 p-2.5">
+              <div className="w-12 h-12 bg-primary-dark rounded-2xl flex items-center justify-center shadow-md shadow-primary/20 p-2.5">
                 <img src="/brand/logogram.svg" alt="" className="w-full h-full" />
               </div>
               <div>
@@ -186,7 +222,7 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
                   InpectPro
                 </h1>
                 <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mt-1 block">
-                  Automotive Inspection Certificate
+                  Laporan Inspeksi Otomotif
                 </span>
               </div>
             </div>
@@ -200,29 +236,30 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
             </div>
           </div>
 
-          {/* Banner & Cover Title */}
-          <div className="bg-slate-950 text-white rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6 relative overflow-hidden print:bg-black">
-            <div className="relative z-10 space-y-2">
-              <span className="text-[10px] text-accent-light font-extrabold uppercase tracking-widest">
-                Official Certification
+          {/* Banner & Cover Title — versi terang */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6 relative overflow-hidden">
+            <span className="absolute left-0 top-0 bottom-0 w-1.5 bg-accent" />
+            <div className="relative z-10 space-y-2 pl-2">
+              <span className="text-[10px] text-accent font-extrabold uppercase tracking-widest">
+                Laporan Resmi
               </span>
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-tight">
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-tight text-slate-900">
                 LAPORAN INSPEKSI KENDARAAN
               </h2>
-              <p className="text-xs text-slate-400 max-w-md">
-                Sertifikat hasil pengecekan menyeluruh kondisi eksterior, interior, mesin, kaki-kaki, kolong, dan kelayakan jalan kendaraan.
+              <p className="text-xs text-slate-500 max-w-md">
+                Laporan hasil pengecekan menyeluruh kondisi eksterior, interior, mesin, kaki-kaki, kolong, dan kelayakan jalan kendaraan.
               </p>
             </div>
             {order.review && (
-              <div className="flex-shrink-0 flex flex-col items-center justify-center bg-white/10 backdrop-blur-md rounded-2xl px-6 py-4 border border-white/15 text-center min-w-[140px] print:bg-neutral-800">
-                <span className="text-[10px] text-slate-300 font-bold uppercase tracking-wider">
+              <div className="flex-shrink-0 flex flex-col items-center justify-center bg-white rounded-2xl px-6 py-4 border border-slate-200 shadow-sm text-center min-w-[140px]">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                   Skor Penilaian
                 </span>
-                <span className="text-4xl sm:text-5xl font-black mt-1 text-white">
+                <span className={`text-4xl sm:text-5xl font-black mt-1 ${scoreTone}`}>
                   {order.review.overall_score}
                 </span>
-                <span className="text-[9px] text-emerald-400 font-bold mt-1 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                  Kondisi Prima
+                <span className={`text-[9px] font-bold mt-1 uppercase tracking-widest ${scoreTone}`}>
+                  {scoreLabel}
                 </span>
               </div>
             )}
@@ -231,7 +268,7 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
           {/* Data Kendaraan & Klien */}
           <div className="grid md:grid-cols-2 gap-6 pt-2">
             {/* Spesifikasi Kendaraan */}
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-4 print:bg-neutral-50">
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-4">
               <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-2 flex items-center gap-2">
                 <Car className="w-4 h-4 text-slate-500" /> Spesifikasi Mobil
               </h3>
@@ -272,7 +309,7 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
             </div>
 
             {/* Administrasi & Pihak Terkait */}
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-4 print:bg-neutral-50">
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-4">
               <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-2 flex items-center gap-2">
                 <User className="w-4 h-4 text-slate-500" /> Detail Pemesanan
               </h3>
@@ -312,38 +349,38 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
 
           {/* Temuan Ringkasan Checklist */}
           <div className="grid grid-cols-4 gap-3">
-            <div className="bg-emerald-50 border border-emerald-100 rounded-xl py-3 px-2 text-center print:bg-emerald-50/50 print:border-emerald-200">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl py-3 px-2 text-center">
               <span className="block text-xl font-extrabold text-emerald-700">{okCount}</span>
               <span className="text-[9px] uppercase tracking-wider font-bold text-emerald-600/80">Kondisi Baik</span>
             </div>
-            <div className="bg-amber-50 border border-amber-100 rounded-xl py-3 px-2 text-center print:bg-amber-50/50 print:border-amber-200">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl py-3 px-2 text-center">
               <span className="block text-xl font-extrabold text-amber-600">{attentionCount}</span>
               <span className="text-[9px] uppercase tracking-wider font-bold text-amber-600/80">Perhatian</span>
             </div>
-            <div className="bg-red-50 border border-red-100 rounded-xl py-3 px-2 text-center print:bg-red-50/50 print:border-red-200">
+            <div className="bg-red-50 border border-red-200 rounded-xl py-3 px-2 text-center">
               <span className="block text-xl font-extrabold text-red-600">{problemCount}</span>
               <span className="text-[9px] uppercase tracking-wider font-bold text-red-600/80">Bermasalah</span>
             </div>
-            <div className="bg-slate-50 border border-slate-200/80 rounded-xl py-3 px-2 text-center print:bg-slate-100">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl py-3 px-2 text-center">
               <span className="block text-xl font-extrabold text-slate-500">{naCount}</span>
               <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">N/A</span>
             </div>
           </div>
 
-          {/* Kesimpulan Review Admin */}
+          {/* Kesimpulan Review Admin — versi terang */}
           {order.review && (
-            <div className="bg-slate-900 text-white rounded-2xl p-6 space-y-4 print:bg-neutral-900">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-accent-light border-b border-white/10 pb-2">
-                Ringkasan & Analisis Temuan Super Admin
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-4 print:break-inside-avoid">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-accent border-b border-slate-200 pb-2">
+                Ringkasan & Analisis Temuan
               </h3>
               <div className="space-y-3 text-xs leading-relaxed">
                 <div>
-                  <p className="text-slate-400 font-bold">Catatan Hasil Review:</p>
-                  <p className="text-slate-200 mt-1">{order.review.summary}</p>
+                  <p className="text-slate-500 font-bold">Catatan Hasil Review:</p>
+                  <p className="text-slate-800 mt-1">{order.review.summary}</p>
                 </div>
                 <div>
-                  <p className="text-slate-400 font-bold">Rekomendasi Ahli:</p>
-                  <p className="text-slate-200 mt-1 bg-white/5 p-3 rounded-xl border border-white/10">{order.review.recommendation}</p>
+                  <p className="text-slate-500 font-bold">Rekomendasi Ahli:</p>
+                  <p className="text-slate-800 mt-1 bg-white p-3 rounded-xl border border-slate-200">{order.review.recommendation}</p>
                 </div>
               </div>
             </div>
@@ -351,7 +388,7 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
         </section>
 
         {/* Halaman 2+: Rincian Temuan Per Kategori */}
-        <section className="pt-10 space-y-10">
+        <section className="pt-10 space-y-8 print:break-before-page print:pt-0">
           <div className="border-b border-slate-200 pb-2">
             <h2 className="text-base font-extrabold text-slate-900 uppercase tracking-widest flex items-center gap-2">
               <Layers className="w-5 h-5 text-accent" /> RINCIAN CHECKLIST PEMERIKSAAN
@@ -360,11 +397,8 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
           </div>
 
           {order.checklist.map((cat) => (
-            <div
-              key={cat.id}
-              className="space-y-4 print:break-inside-avoid print:pt-6"
-            >
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-slate-200 pb-1.5 flex items-center justify-between">
+            <div key={cat.id} className="space-y-3">
+              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-slate-200 pb-1.5 flex items-center justify-between print:break-after-avoid">
                 <span>{cat.name}</span>
                 <span className="text-[10px] font-normal text-slate-400 normal-case">{cat.items.length} Titik Cek</span>
               </h3>
@@ -376,7 +410,7 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
                     className="p-4 bg-white grid sm:grid-cols-12 gap-4 items-start print:py-3 print:px-4 print:break-inside-avoid"
                   >
                     {/* Nama Poin Checklist */}
-                    <div className="sm:col-span-4 space-y-1">
+                    <div className="sm:col-span-3 space-y-1">
                       <p className="text-xs font-bold text-slate-800">{item.name}</p>
                       <p className="text-[10px] text-slate-400 font-medium">Titik Cek #{item.id.substring(0, 4)}</p>
                     </div>
@@ -384,50 +418,48 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
                     {/* Status */}
                     <div className="sm:col-span-2">
                       {item.status === "ok" && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md print:bg-white print:border-emerald-500">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" /> Baik
                         </span>
                       )}
                       {item.status === "attention" && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-md print:bg-white print:border-amber-500">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" /> Perhatian
                         </span>
                       )}
                       {item.status === "problem" && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded-md print:bg-white print:border-red-500">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-md">
                           <XCircle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" /> Bermasalah
                         </span>
                       )}
                       {item.status === "na" && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-md print:bg-white print:border-slate-300">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-md">
                           N/A
                         </span>
                       )}
-
                     </div>
 
-                    {/* Catatan / Keterangan Temuan */}
+                    {/* Catatan / Keterangan Temuan — kosongkan bila tidak ada catatan */}
                     <div className="sm:col-span-3 text-xs text-slate-600 leading-relaxed italic">
-                      {item.notes ? `"${item.notes}"` : <span className="text-slate-300 font-medium not-italic">Tidak ada temuan khusus.</span>}
+                      {item.notes ? `"${item.notes}"` : null}
                     </div>
 
                     {/* Foto-Foto Lampiran */}
-                    <div className="sm:col-span-3">
-                      {item.photos && item.photos.length > 0 ? (
-                        <div className="grid grid-cols-2 gap-1.5">
+                    <div className="sm:col-span-4">
+                      {item.photos && item.photos.length > 0 && (
+                        <div className="grid grid-cols-2 gap-2">
                           {item.photos.slice(0, 2).map((photoUrl, pIdx) => (
-                            <div key={pIdx} className="aspect-4/3 bg-slate-100 rounded-lg overflow-hidden border border-slate-200/60 relative">
+                            <div key={pIdx} className="h-32 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 relative">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={photoUrl}
                                 alt={`Temuan ${item.name}`}
+                                loading="eager"
                                 className="w-full h-full object-cover"
                               />
                             </div>
                           ))}
                         </div>
-                      ) : (
-                        <span className="text-[10px] text-slate-300 font-medium">Tanpa Lampiran Foto</span>
                       )}
                     </div>
                   </div>
@@ -437,51 +469,53 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
           ))}
         </section>
 
-        {/* Footer Penutup Laporan */}
-        <section className="mt-16 pt-10 border-t border-slate-200 grid grid-cols-2 gap-6 text-center text-xs print:break-inside-avoid">
-          <div className="space-y-12">
-            <p className="text-slate-400 font-semibold uppercase tracking-wider text-[9px]">Inspektur Lapangan</p>
-            <div>
-              <p className="font-bold text-slate-900 border-b border-slate-300 pb-1 inline-block min-w-[160px]">
-                {order.inspector_name}
-              </p>
-              <p className="text-[10px] text-slate-400 mt-1">Tanda Tangan & Nama Terang</p>
-            </div>
-          </div>
-          <div className="space-y-12">
-            <p className="text-slate-400 font-semibold uppercase tracking-wider text-[9px]">Super Admin Reviewer</p>
-            <div>
-              <p className="font-bold text-slate-900 border-b border-slate-300 pb-1 inline-block min-w-[160px]">
-                {order.review ? "Arya (Super Admin)" : "Super Admin"}
-              </p>
-              <p className="text-[10px] text-slate-400 mt-1">Tanda Tangan & Nama Terang</p>
-            </div>
-          </div>
+        {/* Footer Penutup Laporan (tanpa tanda tangan) */}
+        <section className="mt-12 pt-6 border-t border-slate-200 text-center print:break-inside-avoid">
+          <p className="text-[10px] text-slate-400 leading-relaxed max-w-lg mx-auto">
+            Laporan ini dihasilkan oleh sistem InpectPro berdasarkan hasil inspeksi lapangan oleh{" "}
+            <span className="font-semibold text-slate-500">{order.inspector_name}</span>
+            {order.review ? " dan telah ditinjau oleh tim Super Admin." : "."}
+          </p>
+          <p className="text-[9px] text-slate-300 mt-2 uppercase tracking-widest font-semibold">
+            InpectPro · Automotive Inspection
+          </p>
         </section>
 
       </article>
 
-      {/* Gaya Cetak Khusus PDF (Sembunyikan Menu Cetak Web, Atur Margins) */}
+      {/* Gaya Cetak Khusus PDF */}
       <style dangerouslySetInnerHTML={{ __html: `
+        /* Paksa skema warna terang — cegah Chrome auto dark mode membalik warna saat cetak */
+        html, .report-doc {
+          color-scheme: light only;
+        }
         @media print {
-          body {
-            background-color: white !important;
-            color: black !important;
+          html, body {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+            color-scheme: light only;
           }
           .print\\:hidden {
             display: none !important;
           }
-          /* Atur margin halaman cetak standard */
+          /* Margin halaman cetak standar A4 */
           @page {
             size: A4;
-            margin: 15mm 12mm 15mm 12mm;
+            margin: 14mm 12mm 14mm 12mm;
           }
-          /* Cegah pembelahan baris atau item yang tidak sedap dipandang */
           .print\\:break-inside-avoid {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
           }
-          /* Force core colors to show in PDF prints */
+          .print\\:break-after-avoid {
+            break-after: avoid !important;
+            page-break-after: avoid !important;
+          }
+          .print\\:break-before-page {
+            break-before: page !important;
+            page-break-before: always !important;
+          }
+          /* Pastikan warna isi (latar kartu, badge, foto) tetap tercetak */
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
