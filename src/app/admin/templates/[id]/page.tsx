@@ -472,7 +472,17 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
                   handleCatDragStart(catIdx);
                 }}
                 onDragOver={(e) => handleCatDragOver(e, catIdx)}
-                onDrop={() => handleCatDrop(catIdx)}
+                onDrop={() => {
+                  if (draggedItemCoords) {
+                    handleItemDrop(catIdx);
+                  } else {
+                    handleCatDrop(catIdx);
+                  }
+                }}
+                onDragEnd={() => {
+                  setDraggedCatIdx(null);
+                  setDraggedItemCoords(null);
+                }}
                 className={`bg-white rounded-2xl border shadow-xs overflow-hidden transition-all duration-200 ${
                   draggedCatIdx === catIdx ? "border-accent/40 opacity-40 scale-[0.99] shadow-inner" : "border-border"
                 }`}
@@ -568,12 +578,19 @@ export default function EditTemplatePage({ params }: { params: Promise<{ id: str
                             e.preventDefault();
                             return;
                           }
+                          e.stopPropagation();
                           handleItemDragStart(catIdx, itemIdx);
                         }}
                         onDragOver={(e) => handleItemDragOver(e)}
                         onDrop={(e) => {
+                          if (!draggedItemCoords) return;
                           e.stopPropagation();
                           handleItemDrop(catIdx, itemIdx);
+                        }}
+                        onDragEnd={(e) => {
+                          e.stopPropagation();
+                          setDraggedItemCoords(null);
+                          setDraggedCatIdx(null);
                         }}
                         className={`pt-4 first:pt-0 flex flex-col md:flex-row gap-4 items-start transition-all duration-200 ${
                           draggedItemCoords?.catIdx === catIdx && draggedItemCoords?.itemIdx === itemIdx
