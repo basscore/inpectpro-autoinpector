@@ -34,10 +34,17 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const { overall_score, summary, recommendation } = await request.json();
+    const body = await request.json();
+    const { overall_score, summary, recommendation, target_status } = body;
 
-    if (!overall_score || !summary || !recommendation) {
-      return NextResponse.json({ error: "Skor akhir, ringkasan temuan, dan rekomendasi wajib diisi" }, { status: 400 });
+    // Jika admin akan menandai laporan "Selesai", ringkasan & rekomendasi wajib.
+    if (target_status === "completed") {
+      if (!summary || !recommendation) {
+        return NextResponse.json(
+          { error: "Ringkasan temuan dan rekomendasi wajib diisi sebelum menyelesaikan laporan" },
+          { status: 400 }
+        );
+      }
     }
 
     // 1. Simpan/Upsert hasil review ke tabel inspection_results
@@ -45,9 +52,9 @@ export async function PUT(
       .from("inspection_results")
       .upsert({
         order_id: id,
-        overall_score: Number(overall_score),
-        summary,
-        recommendation,
+        overall_score: Number(overall_score) || 0,
+        summary: summary ?? "",
+        recommendation: recommendation ?? "",
         submitted_at: new Date().toISOString(), // Fallback jika sebelumnya kosong
         reviewed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -60,23 +67,28 @@ export async function PUT(
       return NextResponse.json({ error: "Gagal menyimpan hasil review" }, { status: 500 });
     }
 
-    // 2. Perbarui status order menjadi 'completed' di tabel orders
-    const { error: orderError } = await supabaseAdmin
-      .from("orders")
-      .update({
-        status: "completed",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
+    // 2. Perbarui status order jika diminta admin (default: tidak diubah)
+    if (target_status) {
+      const { error: orderError } = await supabaseAdmin
+        .from("orders")
+        .update({
+          status: target_status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
 
-    if (orderError) {
-      console.error("Update order status to completed error:", orderError);
-      return NextResponse.json({ error: "Gagal mengubah status order menjadi Selesai" }, { status: 500 });
+      if (orderError) {
+        console.error("Update order status error:", orderError);
+        return NextResponse.json({ error: "Gagal mengubah status order" }, { status: 500 });
+      }
     }
 
     return NextResponse.json({
       success: true,
-      message: "Laporan berhasil di-review dan diselesaikan",
+      message:
+        target_status === "completed"
+          ? "Laporan berhasil di-review dan diselesaikan"
+          : "Perubahan laporan berhasil disimpan",
     });
   } catch (error: any) {
     console.error("Create Order Review API Error:", error);

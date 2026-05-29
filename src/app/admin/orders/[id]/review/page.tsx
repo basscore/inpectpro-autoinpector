@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -9,32 +9,47 @@ import {
   XCircle,
   Minus,
   Camera,
-  MessageSquare,
   AlertCircle,
   Save,
+  Plus,
+  Trash2,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  ImageIcon,
 } from "lucide-react";
 
-const statusIcons = {
-  ok: { icon: CheckCircle2, color: "text-success", bg: "bg-success-bg", label: "OK" },
-  attention: { icon: AlertTriangle, color: "text-warning", bg: "bg-warning-bg", label: "Perhatian" },
-  problem: { icon: XCircle, color: "text-danger", bg: "bg-danger-bg", label: "Bermasalah" },
-  na: { icon: Minus, color: "text-text-tertiary", bg: "bg-surface-tertiary", label: "N/A" },
+const STATUS_OPTIONS: { value: "ok" | "attention" | "problem" | "na"; label: string; color: string; bg: string; ring: string }[] = [
+  { value: "ok", label: "OK", color: "text-success", bg: "bg-success-bg", ring: "ring-success" },
+  { value: "attention", label: "Perhatian", color: "text-warning", bg: "bg-warning-bg", ring: "ring-warning" },
+  { value: "problem", label: "Bermasalah", color: "text-danger", bg: "bg-danger-bg", ring: "ring-danger" },
+  { value: "na", label: "N/A", color: "text-text-tertiary", bg: "bg-surface-tertiary", ring: "ring-slate-400" },
+];
+
+const STATUS_ICON: Record<string, any> = {
+  ok: CheckCircle2,
+  attention: AlertTriangle,
+  problem: XCircle,
+  na: Minus,
 };
 
-const severityConfig = {
-  ringan: { color: "text-amber-600", bg: "bg-amber-50", label: "Ringan" },
-  sedang: { color: "text-orange-600", bg: "bg-orange-50", label: "Sedang" },
-  berat: { color: "text-red-600", bg: "bg-red-50", label: "Berat" },
-};
+const SEVERITY_OPTIONS: { value: "ringan" | "sedang" | "berat"; label: string; color: string; bg: string }[] = [
+  { value: "ringan", label: "Ringan", color: "text-amber-700", bg: "bg-amber-50 border-amber-200" },
+  { value: "sedang", label: "Sedang", color: "text-orange-700", bg: "bg-orange-50 border-orange-200" },
+  { value: "berat", label: "Berat", color: "text-red-700", bg: "bg-red-50 border-red-200" },
+];
 
 interface InspectionItem {
   id: string;
   name: string;
-  description?: string;
-  status: "ok" | "attention" | "problem" | "na";
-  severity?: "ringan" | "sedang" | "berat";
+  status: "ok" | "attention" | "problem" | "na" | null;
+  severity?: "ringan" | "sedang" | "berat" | null;
   notes?: string;
   photos: string[];
+  photo_required?: boolean;
+  severity_required?: boolean;
+  is_answered?: boolean;
 }
 
 interface InspectionCategory {
@@ -43,20 +58,12 @@ interface InspectionCategory {
   items: InspectionItem[];
 }
 
-interface Client {
-  name: string;
-}
-
-interface Vehicle {
-  brand: string;
-  model: string;
-}
-
 interface Order {
   id: string;
   order_number: string;
-  client: Client;
-  vehicle: Vehicle;
+  status: string;
+  client: { name: string };
+  vehicle: { brand: string; model: string };
   checklist: InspectionCategory[];
   review?: {
     overall_score?: number;
@@ -72,11 +79,33 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [categories, setCategories] = useState<InspectionCategory[]>([]);
   const [score, setScore] = useState(80);
   const [summary, setSummary] = useState("");
   const [recommendation, setRecommendation] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
+
+  // Modal tambah item
+  const [addingCategory, setAddingCategory] = useState<InspectionCategory | null>(null);
+  const [newItemName, setNewItemName] = useState("");
+  const [addingBusy, setAddingBusy] = useState(false);
+
+  // Modal konfirmasi hapus
+  const [confirmDelete, setConfirmDelete] = useState<
+    | { kind: "item"; categoryId: string; itemId: string; label: string }
+    | { kind: "category"; categoryId: string; label: string }
+    | null
+  >(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
+
+  // Foto upload state per item
+  const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetRef = useRef<string | null>(null);
 
   const fetchOrderDetail = async () => {
     try {
@@ -85,9 +114,10 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
       const res = await fetch(`/api/admin/orders/${id}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Gagal memuat rincian order");
-      
+
       const ord = data.order;
       setOrder(ord);
+      setCategories(ord.checklist || []);
       if (ord.review) {
         setScore(ord.review.overall_score ?? 80);
         setSummary(ord.review.summary ?? "");
@@ -111,36 +141,221 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
     );
   };
 
-  const handleSaveReview = async () => {
+  const updateItem = (categoryId: string, itemId: string, patch: Partial<InspectionItem>) => {
+    setCategories((prev) =>
+      prev.map((cat) =>
+        cat.id !== categoryId
+          ? cat
+          : {
+              ...cat,
+              items: cat.items.map((it) => (it.id !== itemId ? it : { ...it, ...patch })),
+            }
+      )
+    );
+  };
+
+  // Kumpulkan payload checklist untuk dikirim ke API PUT order
+  const buildChecklistPayload = () =>
+    categories.flatMap((cat) =>
+      cat.items.map((it) => ({
+        id: it.id,
+        status: it.status,
+        severity: it.severity || null,
+        notes: it.notes || "",
+        photos: it.photos || [],
+        is_answered: it.status != null && it.status !== ("" as any),
+      }))
+    );
+
+  const persistChanges = async (targetStatus?: string) => {
+    setError("");
+    setSavedMsg("");
+
+    // 1. Simpan checklist + (opsional) status via PUT order
+    const checklistPayload = buildChecklistPayload();
+    const orderUpdate: any = { checklist: checklistPayload };
+    if (targetStatus) orderUpdate.status = targetStatus;
+
+    const r1 = await fetch(`/api/admin/orders/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(orderUpdate),
+    });
+    const d1 = await r1.json();
+    if (!r1.ok) throw new Error(d1.error || "Gagal menyimpan checklist");
+
+    // 2. Simpan skor + ringkasan + rekomendasi
+    const r2 = await fetch(`/api/admin/orders/${id}/review`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        overall_score: score,
+        summary,
+        recommendation,
+        target_status: targetStatus || undefined,
+      }),
+    });
+    const d2 = await r2.json();
+    if (!r2.ok) throw new Error(d2.error || "Gagal menyimpan ringkasan laporan");
+  };
+
+  const handleSaveDraft = async () => {
+    try {
+      setIsSavingDraft(true);
+      await persistChanges(); // tidak ubah status
+      setSavedMsg("Perubahan berhasil disimpan");
+      await fetchOrderDetail();
+    } catch (err: any) {
+      setError(err.message || "Gagal menyimpan perubahan");
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const handleComplete = async () => {
     if (!summary.trim() || !recommendation.trim()) {
-      setError("Ringkasan temuan dan rekomendasi wajib diisi");
+      setError("Ringkasan temuan dan rekomendasi wajib diisi sebelum menyelesaikan laporan");
       return;
     }
-
-    setError("");
-    setIsSubmitting(true);
-
     try {
-      const res = await fetch(`/api/admin/orders/${id}/review`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          overall_score: score,
-          summary,
-          recommendation,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Gagal menyimpan review");
-
+      setIsCompleting(true);
+      await persistChanges("completed");
       router.push("/admin/orders");
       router.refresh();
     } catch (err: any) {
-      setError(err.message || "Gagal menghubungkan ke server");
-    } finally {
-      setIsSubmitting(false);
+      setError(err.message || "Gagal menyelesaikan laporan");
+      setIsCompleting(false);
     }
+  };
+
+  // ===== Tambah item =====
+  const openAddItem = (category: InspectionCategory) => {
+    setAddingCategory(category);
+    setNewItemName("");
+  };
+
+  const submitAddItem = async () => {
+    if (!addingCategory || !newItemName.trim()) return;
+    try {
+      setAddingBusy(true);
+      const res = await fetch(`/api/admin/orders/${id}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category_id: addingCategory.id,
+          category_name: addingCategory.name,
+          item_name: newItemName.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Gagal menambah item");
+
+      setCategories((prev) =>
+        prev.map((cat) =>
+          cat.id !== addingCategory.id ? cat : { ...cat, items: [...cat.items, data.item] }
+        )
+      );
+      setAddingCategory(null);
+      setNewItemName("");
+    } catch (err: any) {
+      alert(err.message || "Gagal menambah item");
+    } finally {
+      setAddingBusy(false);
+    }
+  };
+
+  // ===== Hapus item / kategori =====
+  const submitDelete = async () => {
+    if (!confirmDelete) return;
+    try {
+      setDeletingBusy(true);
+      const body =
+        confirmDelete.kind === "item"
+          ? { item_id: confirmDelete.itemId }
+          : { category_id: confirmDelete.categoryId };
+
+      const res = await fetch(`/api/admin/orders/${id}/items`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Gagal menghapus");
+
+      if (confirmDelete.kind === "item") {
+        setCategories((prev) =>
+          prev.map((cat) =>
+            cat.id !== confirmDelete.categoryId
+              ? cat
+              : { ...cat, items: cat.items.filter((it) => it.id !== confirmDelete.itemId) }
+          )
+        );
+      } else {
+        setCategories((prev) => prev.filter((cat) => cat.id !== confirmDelete.categoryId));
+      }
+      setConfirmDelete(null);
+    } catch (err: any) {
+      alert(err.message || "Gagal menghapus");
+    } finally {
+      setDeletingBusy(false);
+    }
+  };
+
+  // ===== Foto =====
+  const triggerPhotoUpload = (itemId: string) => {
+    uploadTargetRef.current = itemId;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const itemId = uploadTargetRef.current;
+    e.target.value = "";
+    if (!file || !itemId) return;
+
+    setUploadingItemId(itemId);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("orderId", id);
+      form.append("itemId", itemId);
+
+      const res = await fetch("/api/inspector/upload", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || "Gagal upload foto");
+
+      // Cari item di categories dan tambahkan url foto
+      setCategories((prev) =>
+        prev.map((cat) => ({
+          ...cat,
+          items: cat.items.map((it) =>
+            it.id !== itemId ? it : { ...it, photos: [...(it.photos || []), data.url] }
+          ),
+        }))
+      );
+    } catch (err: any) {
+      alert(err.message || "Gagal upload foto");
+    } finally {
+      setUploadingItemId(null);
+      uploadTargetRef.current = null;
+    }
+  };
+
+  const removePhoto = (categoryId: string, itemId: string, photoUrl: string) => {
+    setCategories((prev) =>
+      prev.map((cat) =>
+        cat.id !== categoryId
+          ? cat
+          : {
+              ...cat,
+              items: cat.items.map((it) =>
+                it.id !== itemId
+                  ? it
+                  : { ...it, photos: (it.photos || []).filter((p) => p !== photoUrl) }
+              ),
+            }
+      )
+    );
   };
 
   if (loading) {
@@ -168,8 +383,6 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
     );
   }
 
-  // Calculate stats from hierarchal list
-  const categories = order?.checklist || [];
   const allItems = categories.flatMap((c) => c.items || []);
   const okCount = allItems.filter((i) => i.status === "ok").length;
   const attentionCount = allItems.filter((i) => i.status === "attention").length;
@@ -177,8 +390,17 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
+      {/* Hidden file input untuk upload foto */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
+
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 animate-fade-in">
+      <div className="flex items-center justify-between gap-4 flex-wrap animate-fade-in">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.back()}
@@ -188,38 +410,67 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
           </button>
           <div>
             <h1 className="text-2xl font-bold text-text-primary">
-              Review Laporan
+              Edit Laporan Inspeksi
             </h1>
             <p className="text-sm text-text-secondary mt-0.5">
               {order?.order_number} · {order?.vehicle.brand} {order?.vehicle.model}
             </p>
           </div>
         </div>
-        <button
-          onClick={handleSaveReview}
-          disabled={isSubmitting}
-          className="inline-flex items-center gap-2 bg-success hover:bg-green-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-sm text-sm disabled:opacity-60"
-        >
-          {isSubmitting ? (
-            "Menyimpan..."
-          ) : (
-            <>
-              <Save className="w-4 h-4" />
-              Selesaikan & Submit
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSaveDraft}
+            disabled={isSavingDraft || isCompleting}
+            className="inline-flex items-center gap-2 bg-white border border-border hover:bg-surface-secondary text-text-primary font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-xs text-sm disabled:opacity-50"
+          >
+            {isSavingDraft ? (
+              "Menyimpan..."
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                Simpan Perubahan
+              </>
+            )}
+          </button>
+          <button
+            onClick={handleComplete}
+            disabled={isSavingDraft || isCompleting}
+            className="inline-flex items-center gap-2 bg-success hover:bg-green-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-sm text-sm disabled:opacity-60"
+          >
+            {isCompleting ? (
+              "Menyelesaikan..."
+            ) : (
+              <>
+                <Check className="w-4 h-4" />
+                Tandai Selesai
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {error && (
         <div className="bg-danger-bg border border-red-200 text-danger text-sm rounded-xl p-4 flex items-center gap-3 animate-slide-in-down">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <div className="flex-1 font-medium">{error}</div>
+          <button onClick={() => setError("")} className="text-danger hover:opacity-70 cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-in delay-1 opacity-0">
+      {savedMsg && (
+        <div className="bg-success-bg border border-green-200 text-success text-sm rounded-xl p-4 flex items-center gap-3 animate-slide-in-down">
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+          <div className="flex-1 font-medium">{savedMsg}</div>
+          <button onClick={() => setSavedMsg("")} className="text-success hover:opacity-70 cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white rounded-xl border border-border p-4 text-center">
           <p className="text-2xl font-bold text-text-primary">{allItems.length}</p>
           <p className="text-xs text-text-tertiary mt-1">Total Item</p>
@@ -238,18 +489,15 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         </div>
       </div>
 
-      {/* Score & Summary Input */}
-      <div className="bg-white rounded-2xl border border-border shadow-xs animate-fade-in delay-2 opacity-0">
+      {/* Skor & Ringkasan */}
+      <div className="bg-white rounded-2xl border border-border shadow-xs">
         <div className="px-6 py-4 border-b border-border-light">
-          <h2 className="text-base font-semibold text-text-primary">
-            Skor & Ringkasan Laporan
-          </h2>
+          <h2 className="text-base font-semibold text-text-primary">Skor & Ringkasan Laporan</h2>
         </div>
         <div className="p-6 space-y-5">
-          {/* Score */}
           <div>
             <label className="block text-sm font-medium text-text-primary mb-3">
-              Skor Penilaian Keseluruhan Mobil
+              Skor Penilaian Keseluruhan
             </label>
             <div className="flex items-center gap-4">
               <input
@@ -262,11 +510,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               />
               <div
                 className={`w-16 h-16 rounded-2xl flex items-center justify-center font-bold text-xl text-white flex-shrink-0 ${
-                  score >= 80
-                    ? "bg-success"
-                    : score >= 60
-                    ? "bg-warning"
-                    : "bg-danger"
+                  score >= 80 ? "bg-success" : score >= 60 ? "bg-warning" : "bg-danger"
                 }`}
               >
                 {score}
@@ -274,7 +518,6 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             </div>
           </div>
 
-          {/* Summary */}
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">
               Ringkasan Temuan Inspeksi <span className="text-danger">*</span>
@@ -283,12 +526,11 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               rows={4}
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
-              placeholder="Berikan ringkasan detail mengenai kondisi umum mobil dan temuan-temuan penting..."
+              placeholder="Ringkasan kondisi umum mobil dan temuan-temuan penting..."
               className="w-full px-4 py-3 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all resize-none"
             />
           </div>
 
-          {/* Recommendation */}
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">
               Rekomendasi Pembelian & Perbaikan <span className="text-danger">*</span>
@@ -297,17 +539,17 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               rows={3}
               value={recommendation}
               onChange={(e) => setRecommendation(e.target.value)}
-              placeholder="Berikan saran kelayakan beli serta estimasi biaya perbaikan komponen bermasalah..."
+              placeholder="Saran kelayakan beli & estimasi biaya perbaikan komponen bermasalah..."
               className="w-full px-4 py-3 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all resize-none"
             />
           </div>
         </div>
       </div>
 
-      {/* Inspection Categories & Titik Pemeriksaan */}
-      <div className="space-y-3 animate-fade-in delay-3 opacity-0">
+      {/* Editor Kategori & Item */}
+      <div className="space-y-3">
         <h3 className="text-base font-bold text-text-primary px-1">
-          Rincian Hasil Cek Lapangan
+          Detail Item Pemeriksaan
         </h3>
         {categories.map((category) => {
           const isExpanded = expandedCategories.includes(category.id);
@@ -322,14 +564,17 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               key={category.id}
               className="bg-white rounded-2xl border border-border shadow-xs overflow-hidden"
             >
-              <button
-                onClick={() => toggleCategory(category.id)}
-                className="w-full flex items-center justify-between px-6 py-4 cursor-pointer hover:bg-surface-secondary/50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <h4 className="text-sm font-bold text-text-primary">
-                    {category.name}
-                  </h4>
+              <div className="flex items-center justify-between px-6 py-4">
+                <button
+                  onClick={() => toggleCategory(category.id)}
+                  className="flex items-center gap-3 flex-1 cursor-pointer text-left"
+                >
+                  {isExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-text-tertiary" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-text-tertiary" />
+                  )}
+                  <h4 className="text-sm font-bold text-text-primary">{category.name}</h4>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-semibold bg-success-bg text-success px-2 py-0.5 rounded-full">
                       {catOk} OK
@@ -339,57 +584,192 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                         {catIssues} Isu
                       </span>
                     )}
+                    <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                      {catItems.length} item
+                    </span>
                   </div>
+                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => openAddItem(category)}
+                    className="p-2 rounded-lg hover:bg-accent/10 text-accent transition-colors cursor-pointer"
+                    title="Tambah item ke kategori ini"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() =>
+                      setConfirmDelete({
+                        kind: "category",
+                        categoryId: category.id,
+                        label: category.name,
+                      })
+                    }
+                    className="p-2 rounded-lg hover:bg-red-50 text-red-500 transition-colors cursor-pointer"
+                    title="Hapus seluruh kategori"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-              </button>
+              </div>
 
               {isExpanded && (
                 <div className="border-t border-border-light divide-y divide-border-light bg-slate-50/30">
+                  {catItems.length === 0 && (
+                    <div className="px-6 py-8 text-center text-sm text-text-tertiary">
+                      Belum ada item di kategori ini.
+                    </div>
+                  )}
                   {catItems.map((item) => {
-                    const status = statusIcons[item.status] || statusIcons.na;
-                    const StatusIcon = status.icon;
-                    const severity = item.severity
-                      ? severityConfig[item.severity]
-                      : null;
-
+                    const selectedStatus = item.status;
+                    const needsSeverity =
+                      selectedStatus === "attention" || selectedStatus === "problem";
                     return (
-                      <div key={item.id} className="px-6 py-4">
-                        <div className="flex items-start gap-3">
-                          <div
-                            className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${status.bg}`}
+                      <div key={item.id} className="px-6 py-5 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-sm font-semibold text-text-primary flex-1">
+                            {item.name}
+                          </p>
+                          <button
+                            onClick={() =>
+                              setConfirmDelete({
+                                kind: "item",
+                                categoryId: category.id,
+                                itemId: item.id,
+                                label: item.name,
+                              })
+                            }
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors cursor-pointer flex-shrink-0"
+                            title="Hapus item ini"
                           >
-                            <StatusIcon className={`w-4 h-4 ${status.color}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-sm font-semibold text-text-primary">
-                                {item.name}
-                              </p>
-                              {severity && (
-                                <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${severity.bg} ${severity.color}`}
-                                >
-                                  {severity.label}
-                                </span>
-                              )}
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Tombol status */}
+                        <div className="grid grid-cols-4 gap-2">
+                          {STATUS_OPTIONS.map((s) => {
+                            const Icon = STATUS_ICON[s.value];
+                            const active = selectedStatus === s.value;
+                            return (
+                              <button
+                                key={s.value}
+                                onClick={() =>
+                                  updateItem(category.id, item.id, {
+                                    status: s.value,
+                                    // Reset severity bila status bukan attention/problem
+                                    severity:
+                                      s.value === "attention" || s.value === "problem"
+                                        ? item.severity ?? null
+                                        : null,
+                                  })
+                                }
+                                className={`flex flex-col items-center justify-center gap-1 py-2.5 rounded-xl border transition-all cursor-pointer text-xs font-semibold ${
+                                  active
+                                    ? `${s.bg} ${s.color} border-transparent ring-2 ${s.ring}`
+                                    : "bg-white border-border text-text-secondary hover:bg-surface-secondary"
+                                }`}
+                              >
+                                <Icon className="w-4 h-4" />
+                                {s.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Tombol severity */}
+                        {needsSeverity && (
+                          <div>
+                            <p className="text-xs font-medium text-text-secondary mb-1.5">
+                              Tingkat keparahan
+                            </p>
+                            <div className="grid grid-cols-3 gap-2">
+                              {SEVERITY_OPTIONS.map((sv) => {
+                                const active = item.severity === sv.value;
+                                return (
+                                  <button
+                                    key={sv.value}
+                                    onClick={() =>
+                                      updateItem(category.id, item.id, { severity: sv.value })
+                                    }
+                                    className={`py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                                      active
+                                        ? `${sv.bg} ${sv.color} ring-2 ring-current/30`
+                                        : "bg-white border-border text-text-secondary hover:bg-surface-secondary"
+                                    }`}
+                                  >
+                                    {sv.label}
+                                  </button>
+                                );
+                              })}
                             </div>
-                            {item.notes ? (
-                              <p className="text-xs text-text-secondary mt-1.5 flex items-start gap-1.5 bg-white p-2.5 border rounded-lg max-w-2xl">
-                                <MessageSquare className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-text-tertiary" />
-                                {item.notes}
-                              </p>
-                            ) : (
-                              <p className="text-xs text-text-tertiary mt-1 italic">Tidak ada catatan temuan.</p>
-                            )}
-                            {item.photos && item.photos.length > 0 && (
-                              <div className="flex items-center gap-1.5 mt-2">
-                                <Camera className="w-3.5 h-3.5 text-text-tertiary" />
-                                <span className="text-xs text-text-tertiary">
-                                  {item.photos.length} foto temuan terlampir
-                                </span>
-                              </div>
-                            )}
                           </div>
+                        )}
+
+                        {/* Catatan */}
+                        <div>
+                          <p className="text-xs font-medium text-text-secondary mb-1.5">
+                            Catatan temuan
+                          </p>
+                          <textarea
+                            rows={2}
+                            value={item.notes || ""}
+                            onChange={(e) =>
+                              updateItem(category.id, item.id, { notes: e.target.value })
+                            }
+                            placeholder="Tuliskan kondisi atau temuan untuk item ini..."
+                            className="w-full px-3 py-2 bg-white border border-border rounded-lg text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all resize-none"
+                          />
+                        </div>
+
+                        {/* Foto */}
+                        <div>
+                          <p className="text-xs font-medium text-text-secondary mb-1.5">
+                            Foto temuan
+                          </p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {(item.photos || []).map((p, idx) => (
+                              <div
+                                key={`${p}-${idx}`}
+                                className="relative w-16 h-16 rounded-lg overflow-hidden border border-border bg-surface-secondary"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={p}
+                                  alt={`Foto ${idx + 1}`}
+                                  className="w-full h-full object-cover"
+                                />
+                                <button
+                                  onClick={() => removePhoto(category.id, item.id, p)}
+                                  className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 hover:bg-red-500 text-white flex items-center justify-center cursor-pointer"
+                                  title="Hapus foto"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => triggerPhotoUpload(item.id)}
+                              disabled={uploadingItemId === item.id}
+                              className="w-16 h-16 rounded-lg border-2 border-dashed border-border bg-white hover:bg-accent/5 hover:border-accent text-text-tertiary hover:text-accent flex flex-col items-center justify-center transition-all cursor-pointer disabled:opacity-50"
+                              title="Tambah foto"
+                            >
+                              {uploadingItemId === item.id ? (
+                                <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-accent" />
+                              ) : (
+                                <>
+                                  <Camera className="w-4 h-4" />
+                                  <span className="text-[10px] mt-0.5">Foto</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          {(!item.photos || item.photos.length === 0) && (
+                            <p className="text-xs text-text-tertiary mt-1.5 flex items-center gap-1">
+                              <ImageIcon className="w-3 h-3" />
+                              Belum ada foto
+                            </p>
+                          )}
                         </div>
                       </div>
                     );
@@ -399,7 +779,138 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             </div>
           );
         })}
+
+        {categories.length === 0 && (
+          <div className="bg-white rounded-2xl border border-border p-8 text-center text-sm text-text-secondary">
+            Belum ada kategori inspeksi pada laporan ini.
+          </div>
+        )}
       </div>
+
+      {/* ===== Modal Tambah Item ===== */}
+      {addingCategory && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-scale-in">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
+              <h3 className="text-lg font-bold text-text-primary">
+                Tambah Item ke {addingCategory.name}
+              </h3>
+              <button
+                onClick={() => setAddingCategory(null)}
+                className="p-2 rounded-lg hover:bg-surface-secondary text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-3">
+              <label className="block text-sm font-medium text-text-primary mb-1">
+                Nama item baru
+              </label>
+              <input
+                autoFocus
+                value={newItemName}
+                onChange={(e) => setNewItemName(e.target.value)}
+                placeholder="Contoh: Lampu kabin depan"
+                className="w-full px-4 py-3 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newItemName.trim() && !addingBusy) {
+                    submitAddItem();
+                  }
+                }}
+              />
+            </div>
+            <div className="flex items-center gap-3 px-6 py-4 border-t border-border-light bg-surface-secondary/50 rounded-b-2xl">
+              <button
+                onClick={() => setAddingCategory(null)}
+                disabled={addingBusy}
+                className="flex-1 px-4 py-2.5 bg-white border border-border hover:bg-surface-secondary text-text-primary font-semibold rounded-xl text-sm cursor-pointer transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={submitAddItem}
+                disabled={addingBusy || !newItemName.trim()}
+                className="flex-1 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white font-semibold rounded-xl text-sm cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {addingBusy ? (
+                  <>
+                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    Menambah...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    Tambah Item
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Modal Konfirmasi Hapus ===== */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-scale-in">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                </div>
+                <h3 className="text-lg font-bold text-text-primary">
+                  {confirmDelete.kind === "category" ? "Hapus Kategori?" : "Hapus Item?"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="p-2 rounded-lg hover:bg-surface-secondary text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-3">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-sm font-medium text-text-primary">{confirmDelete.label}</p>
+              </div>
+              <p className="text-sm text-text-secondary">
+                {confirmDelete.kind === "category"
+                  ? "Seluruh item & data pemeriksaan dalam kategori ini akan dihapus permanen."
+                  : "Item ini beserta status, catatan, dan foto-fotonya akan dihapus permanen."}
+              </p>
+              <p className="text-sm text-red-600 font-medium">
+                ⚠️ Tindakan ini tidak bisa dibatalkan.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 px-6 py-4 border-t border-border-light bg-surface-secondary/50 rounded-b-2xl">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deletingBusy}
+                className="flex-1 px-4 py-2.5 bg-white border border-border hover:bg-surface-secondary text-text-primary font-semibold rounded-xl text-sm cursor-pointer transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={submitDelete}
+                disabled={deletingBusy}
+                className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl text-sm cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {deletingBusy ? (
+                  <>
+                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    Menghapus...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Ya, Hapus
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

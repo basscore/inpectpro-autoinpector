@@ -22,8 +22,21 @@ import {
   X,
   AlertTriangle,
   Play,
+  Pencil,
+  Shuffle,
+  Check,
 } from "lucide-react";
 import { ORDER_STATUS_CONFIG } from "@/lib/mock-data";
+
+// Semua status yang boleh dipilih super admin dari UI ubah status.
+const SELECTABLE_STATUSES: { value: string; label: string; description: string }[] = [
+  { value: "draft", label: "Draft", description: "Order belum siap dikerjakan" },
+  { value: "assigned", label: "Ditugaskan", description: "Inspektor sudah ditugaskan" },
+  { value: "in_progress", label: "Sedang Dikerjakan", description: "Inspeksi sedang berjalan di lapangan" },
+  { value: "pending_review", label: "Menunggu Review", description: "Hasil sudah masuk, menunggu admin me-review" },
+  { value: "completed", label: "Selesai", description: "Laporan sudah final dan diserahkan ke klien" },
+  { value: "cancelled", label: "Dibatalkan", description: "Order dibatalkan, data tetap tersimpan" },
+];
 
 interface Client {
   name: string;
@@ -72,6 +85,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [confirmMode, setConfirmMode] = useState<"cancel" | "delete">("cancel");
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState("");
+
+  // State untuk modal ubah status
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [statusTarget, setStatusTarget] = useState<string>("");
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusError, setStatusError] = useState("");
 
   const fetchOrderDetail = async () => {
     try {
@@ -134,8 +153,46 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  // Apakah order bisa dibatalkan/dihapus
+  // Apakah order bisa dibatalkan (soft delete)
   const canCancelOrDelete = order && order.status !== "completed" && order.status !== "cancelled";
+
+  // Apakah ada laporan yang bisa dilihat/edit oleh admin
+  const canEditReport =
+    order &&
+    (order.status === "in_progress" ||
+      order.status === "pending_review" ||
+      order.status === "completed");
+
+  const openStatusModal = () => {
+    if (!order) return;
+    setStatusTarget(order.status);
+    setStatusError("");
+    setShowStatusModal(true);
+  };
+
+  const submitStatusChange = async () => {
+    if (!order || !statusTarget || statusTarget === order.status) {
+      setShowStatusModal(false);
+      return;
+    }
+    try {
+      setStatusSaving(true);
+      setStatusError("");
+      const res = await fetch(`/api/admin/orders/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: statusTarget }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gagal mengubah status");
+      setShowStatusModal(false);
+      fetchOrderDetail();
+    } catch (err: any) {
+      setStatusError(err.message || "Gagal menghubungkan ke server");
+    } finally {
+      setStatusSaving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -196,23 +253,32 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <button
+            onClick={openStatusModal}
+            className="inline-flex items-center gap-2 bg-white border border-border hover:bg-surface-secondary text-text-primary font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-xs text-sm"
+            title="Ubah status order"
+          >
+            <Shuffle className="w-4 h-4" />
+            Ubah Status
+          </button>
           {(order.status === "assigned" || order.status === "in_progress") && (
             <Link
               href={`/inspector/orders/${order.id}`}
-              className="inline-flex items-center gap-2 bg-accent hover:bg-accent-dark text-white font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm hover:shadow-md text-sm animate-pulse"
+              className="inline-flex items-center gap-2 bg-accent hover:bg-accent-dark text-white font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm hover:shadow-md text-sm"
             >
               <Play className="w-4 h-4" />
               Jalankan Inspeksi
             </Link>
           )}
-          {order.status === "pending_review" && (
+          {canEditReport && (
             <Link
               href={`/admin/orders/${order.id}/review`}
               className="inline-flex items-center gap-2 bg-accent hover:bg-accent-dark text-white font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm hover:shadow-md text-sm"
+              title="Lihat dan edit laporan inspeksi"
             >
-              <Eye className="w-4 h-4" />
-              Review
+              <Pencil className="w-4 h-4" />
+              {order.status === "completed" ? "Edit Laporan" : "Review / Edit Laporan"}
             </Link>
           )}
           {order.status === "completed" && (
@@ -226,25 +292,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </Link>
           )}
           {canCancelOrDelete && (
-            <>
-              <button
-                onClick={handleCancelOrder}
-                className="inline-flex items-center gap-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer text-sm"
-                title="Batalkan order ini"
-              >
-                <XCircle className="w-4 h-4" />
-                Batalkan
-              </button>
-              <button
-                onClick={handleDeleteOrder}
-                className="inline-flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm hover:shadow-md text-sm"
-                title="Hapus order secara permanen"
-              >
-                <Trash2 className="w-4 h-4" />
-                Hapus
-              </button>
-            </>
+            <button
+              onClick={handleCancelOrder}
+              className="inline-flex items-center gap-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer text-sm"
+              title="Batalkan order ini"
+            >
+              <XCircle className="w-4 h-4" />
+              Batalkan
+            </button>
           )}
+          <button
+            onClick={handleDeleteOrder}
+            className="inline-flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white font-semibold px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm hover:shadow-md text-sm"
+            title="Hapus order secara permanen"
+          >
+            <Trash2 className="w-4 h-4" />
+            Hapus
+          </button>
         </div>
       </div>
 
@@ -405,15 +469,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
 
           {/* Aksi Cepat (Cancel/Delete) — di sidebar juga */}
-          {canCancelOrDelete && (
-            <div className="bg-white rounded-2xl border border-border shadow-xs animate-fade-in delay-5 opacity-0">
-              <div className="flex items-center gap-3 px-6 py-4 border-b border-border-light">
-                <AlertTriangle className="w-5 h-5 text-red-400" />
-                <h2 className="text-base font-semibold text-text-primary">
-                  Zona Bahaya
-                </h2>
-              </div>
-              <div className="p-6 space-y-3">
+          <div className="bg-white rounded-2xl border border-border shadow-xs animate-fade-in delay-5 opacity-0">
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-border-light">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+              <h2 className="text-base font-semibold text-text-primary">
+                Zona Bahaya
+              </h2>
+            </div>
+            <div className="p-6 space-y-3">
+              {canCancelOrDelete && (
                 <button
                   onClick={handleCancelOrder}
                   className="w-full flex items-center justify-center gap-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer text-sm"
@@ -421,21 +485,122 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <XCircle className="w-4 h-4" />
                   Batalkan Order
                 </button>
-                <button
-                  onClick={handleDeleteOrder}
-                  className="w-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-sm text-sm"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Hapus Permanen
-                </button>
-                <p className="text-xs text-text-tertiary text-center mt-1">
-                  Batalkan = ubah status. Hapus = hilangkan data sepenuhnya.
-                </p>
-              </div>
+              )}
+              <button
+                onClick={handleDeleteOrder}
+                className="w-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-semibold px-4 py-2.5 rounded-xl transition-all cursor-pointer shadow-sm text-sm"
+              >
+                <Trash2 className="w-4 h-4" />
+                Hapus Permanen
+              </button>
+              <p className="text-xs text-text-tertiary text-center mt-1">
+                {canCancelOrDelete
+                  ? "Batalkan = ubah status. Hapus = hilangkan data sepenuhnya."
+                  : "Hapus permanen akan menghilangkan order beserta seluruh data inspeksinya."}
+              </p>
             </div>
-          )}
+          </div>
         </div>
       </div>
+
+      {/* Modal Ubah Status */}
+      {showStatusModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-scale-in">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Shuffle className="w-5 h-5 text-primary" />
+                </div>
+                <h3 className="text-lg font-bold text-text-primary">Ubah Status Order</h3>
+              </div>
+              <button
+                onClick={() => setShowStatusModal(false)}
+                className="p-2 rounded-lg hover:bg-surface-secondary text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-3 max-h-[60vh] overflow-y-auto">
+              <p className="text-xs text-text-tertiary mb-1">
+                Pilih status baru untuk <strong>{order.order_number}</strong>. Status sekarang:{" "}
+                <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${statusConfig.bg} ${statusConfig.color}`}>
+                  {statusConfig.label}
+                </span>
+              </p>
+              {SELECTABLE_STATUSES.map((s) => {
+                const selected = statusTarget === s.value;
+                const isCurrent = order.status === s.value;
+                return (
+                  <button
+                    key={s.value}
+                    onClick={() => setStatusTarget(s.value)}
+                    className={`w-full flex items-start gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      selected
+                        ? "border-accent bg-accent/5 ring-2 ring-accent/20"
+                        : "border-border hover:bg-surface-secondary"
+                    }`}
+                  >
+                    <div
+                      className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                        selected ? "border-accent bg-accent" : "border-border bg-white"
+                      }`}
+                    >
+                      {selected && <Check className="w-3 h-3 text-white" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-semibold text-text-primary">{s.label}</p>
+                        {isCurrent && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                            saat ini
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-text-secondary mt-0.5">{s.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {statusError && (
+                <div className="bg-danger-bg border border-red-200 text-danger text-sm rounded-xl p-3 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {statusError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 px-6 py-4 border-t border-border-light bg-surface-secondary/50 rounded-b-2xl">
+              <button
+                onClick={() => setShowStatusModal(false)}
+                disabled={statusSaving}
+                className="flex-1 px-4 py-2.5 bg-white border border-border hover:bg-surface-secondary text-text-primary font-semibold rounded-xl text-sm cursor-pointer transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={submitStatusChange}
+                disabled={statusSaving || !statusTarget || statusTarget === order.status}
+                className="flex-1 px-4 py-2.5 bg-accent hover:bg-accent-dark text-white font-semibold rounded-xl text-sm cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {statusSaving ? (
+                  <>
+                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    Menyimpan...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Simpan Status
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Konfirmasi */}
       {showConfirmModal && (
