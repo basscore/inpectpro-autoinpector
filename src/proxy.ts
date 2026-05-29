@@ -22,7 +22,7 @@ function parseJwt(token: string) {
   }
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
   // Baca session_token cookie
@@ -97,7 +97,7 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Jalankan middleware pada rute admin, inspector, login, orders, dan root
+// Jalankan proxy pada rute admin, inspector, login, orders, dan root
 export const config = {
   matcher: ["/admin/:path*", "/inspector/:path*", "/orders/:path*", "/login", "/"],
 };
