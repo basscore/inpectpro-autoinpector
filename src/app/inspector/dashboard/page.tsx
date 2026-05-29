@@ -20,6 +20,7 @@ import {
   syncOfflineData,
   getQueuedUpdates,
 } from "@/lib/offline-db";
+import { ListSkeleton } from "@/lib/ui";
 import type { Order } from "@/lib/types";
 
 export default function InspectorDashboard() {
@@ -122,7 +123,7 @@ export default function InspectorDashboard() {
   // Filter orders
   const todayStr = new Date().toISOString().split("T")[0];
   const todayOrders = orders.filter((o) => o.schedule_date === todayStr);
-  const inProgressOrder = orders.find((o) => o.status === "in_progress");
+  const inProgressOrders = orders.filter((o) => o.status === "in_progress");
   const myOrders = orders;
 
   return (
@@ -192,7 +193,7 @@ export default function InspectorDashboard() {
         </div>
         <div className="bg-white rounded-2xl border border-border p-4 text-center shadow-xs">
           <p className="text-2xl font-bold text-warning">
-            {loading ? "..." : inProgressOrder ? 1 : 0}
+            {loading ? "..." : inProgressOrders.length}
           </p>
           <p className="text-[10px] text-text-tertiary mt-1 uppercase tracking-wider">
             Dikerjakan
@@ -209,42 +210,45 @@ export default function InspectorDashboard() {
       </div>
 
       {/* Current inspection */}
-      {inProgressOrder && (
-        <div className="animate-fade-in delay-2">
-          <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider mb-3">
+      {inProgressOrders.length > 0 && (
+        <div className="animate-fade-in delay-2 space-y-3">
+          <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">
             Sedang Dikerjakan
           </h2>
-          <Link
-            href={`/inspector/orders/${inProgressOrder.id}/inspect`}
-            className="block bg-gradient-to-br from-accent to-accent-dark rounded-2xl p-5 text-white shadow-lg shadow-accent/20 cursor-pointer active:scale-[0.98] transition-transform"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1">
-                <p className="text-xs text-white/70 font-medium">
-                  {inProgressOrder.order_number}
-                </p>
-                <h3 className="text-lg font-bold mt-1">
-                  {inProgressOrder.vehicle.brand} {inProgressOrder.vehicle.model}
-                </h3>
-                <p className="text-sm text-white/80 mt-0.5">
-                  {inProgressOrder.vehicle.year} · {inProgressOrder.vehicle.plate_number}
-                </p>
-                <div className="flex items-center gap-3 mt-3 text-xs text-white/70">
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3 h-3" />
-                    {inProgressOrder.location.split(",")[0]}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {inProgressOrder.schedule_time}
-                  </span>
+          {inProgressOrders.map((inProgressOrder) => (
+            <Link
+              key={inProgressOrder.id}
+              href={`/inspector/orders/${inProgressOrder.id}/inspect/checklist`}
+              className="block bg-gradient-to-br from-accent to-accent-dark rounded-2xl p-5 text-white shadow-lg shadow-accent/20 cursor-pointer active:scale-[0.98] transition-transform"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <p className="text-xs text-white/70 font-medium">
+                    {inProgressOrder.order_number}
+                  </p>
+                  <h3 className="text-lg font-bold mt-1">
+                    {inProgressOrder.vehicle.brand} {inProgressOrder.vehicle.model}
+                  </h3>
+                  <p className="text-sm text-white/80 mt-0.5">
+                    {inProgressOrder.vehicle.year} · {inProgressOrder.vehicle.plate_number}
+                  </p>
+                  <div className="flex items-center gap-3 mt-3 text-xs text-white/70">
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {inProgressOrder.location.split(",")[0]}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {inProgressOrder.schedule_time}
+                    </span>
+                  </div>
+                </div>
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <ArrowRight className="w-5 h-5" />
                 </div>
               </div>
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                <ArrowRight className="w-5 h-5" />
-              </div>
-            </div>
-          </Link>
+            </Link>
+          ))}
         </div>
       )}
 
@@ -258,9 +262,7 @@ export default function InspectorDashboard() {
         </div>
 
         {loading ? (
-          <div className="bg-white rounded-2xl border border-border p-8 text-center shadow-xs">
-            <p className="text-sm text-text-secondary">Memuat data order...</p>
-          </div>
+          <ListSkeleton rows={2} />
         ) : todayOrders.length === 0 ? (
           <div className="bg-white rounded-2xl border border-border p-8 text-center shadow-xs">
             <ClipboardCheck className="w-10 h-10 text-text-tertiary mx-auto mb-3" />
@@ -327,9 +329,7 @@ export default function InspectorDashboard() {
           Akan Datang
         </h2>
         {loading ? (
-          <div className="bg-white rounded-2xl border border-border p-8 text-center shadow-xs">
-            <p className="text-sm text-text-secondary">Memuat data order...</p>
-          </div>
+          <ListSkeleton rows={2} />
         ) : myOrders.filter((o) => o.schedule_date > todayStr && o.status !== "completed").length === 0 ? (
           <div className="bg-white rounded-2xl border border-border p-6 text-center shadow-xs text-xs text-text-tertiary">
             Tidak ada order mendatang

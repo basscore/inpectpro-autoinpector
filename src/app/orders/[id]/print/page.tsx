@@ -178,8 +178,8 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
           {/* Cover Header */}
           <div className="flex items-start justify-between border-b border-slate-200 pb-6">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-primary-dark text-white rounded-2xl flex items-center justify-center shadow-md shadow-primary/20">
-                <Car className="w-6 h-6 text-white" strokeWidth={2.5} />
+              <div className="w-12 h-12 bg-primary-dark text-white rounded-2xl flex items-center justify-center shadow-md shadow-primary/20 p-2.5">
+                <img src="/brand/logogram.svg" alt="" className="w-full h-full" />
               </div>
               <div>
                 <h1 className="text-xl font-extrabold text-slate-900 tracking-tight leading-none print:text-2xl">

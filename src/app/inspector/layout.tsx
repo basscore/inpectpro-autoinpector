@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   ClipboardList,
   User,
-  Car,
   Shield,
   Wifi,
   WifiOff,
@@ -43,6 +42,19 @@ export default function InspectorLayout({
       .catch(() => {});
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // Status online harus mengikuti koneksi asli perangkat, bukan toggle manual.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => setIsOnline(navigator.onLine);
+    sync();
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
     };
   }, []);
 
@@ -96,25 +108,28 @@ export default function InspectorLayout({
       {/* Top bar */}
       {!isInspectionMode && (
         <header className="sticky top-0 z-30 bg-primary-dark text-white px-4 h-14 flex items-center gap-3 shadow-md">
-          <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center relative">
-            <Car className="w-4 h-4 text-white" strokeWidth={2.5} />
-            <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-success rounded-full border border-primary-dark flex items-center justify-center">
-              <Shield className="w-1.5 h-1.5 text-white" />
-            </div>
-          </div>
-          <span className="font-bold text-base tracking-tight">InpectPro</span>
+          <img
+            src="/brand/logogram.svg"
+            alt=""
+            className="w-8 h-8 flex-shrink-0"
+          />
+          <img
+            src="/brand/logotype.svg"
+            alt="InpectPro"
+            className="h-4 w-auto"
+          />
           <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => setIsOnline(!isOnline)}
-              className="p-2 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
-              aria-label="Toggle online status"
+            <span
+              className="p-2 rounded-lg"
+              aria-label={isOnline ? "Terhubung ke internet" : "Sedang offline"}
+              title={isOnline ? "Terhubung ke internet" : "Sedang offline"}
             >
               {isOnline ? (
                 <Wifi className="w-4 h-4 text-success-light" />
               ) : (
                 <WifiOff className="w-4 h-4 text-warning-light" />
               )}
-            </button>
+            </span>
             <button
               onClick={handleLogout}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-white/10 hover:bg-red-500/20 text-slate-200 hover:text-red-300 text-xs font-medium transition-colors cursor-pointer border border-white/10 hover:border-red-400/30"

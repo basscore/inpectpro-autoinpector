@@ -62,15 +62,39 @@ export function initDB(): Promise<IDBDatabase> {
 // Menyimpan daftar order ke IndexedDB
 export async function saveOfflineOrders(orders: Order[]): Promise<void> {
   const db = await initDB();
+
+  // Daftar order dari /api/inspector/orders TIDAK membawa detail checklist/review.
+  // Tanpa langkah ini, refresh daftar (store.clear) akan menghapus detail inspeksi
+  // yang sudah di-cache untuk mode offline → inspektor jadi tak bisa lanjut offline.
+  // Maka: baca cache lama dulu, lalu pertahankan field detail saat menulis ulang.
+  const existing = await new Promise<any[]>((resolve, reject) => {
+    const tx = db.transaction("orders", "readonly");
+    const req = tx.objectStore("orders").getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+  const existingById = new Map<string, any>(existing.map((o) => [o.id, o]));
+
   return new Promise((resolve, reject) => {
     const transaction = db.transaction("orders", "readwrite");
     const store = transaction.objectStore("orders");
 
-    // Bersihkan data lama agar sinkron
+    // Bersihkan data lama agar order yang sudah tidak ditugaskan ikut hilang.
     store.clear();
 
     orders.forEach((order) => {
-      store.put(order);
+      const prev = existingById.get((order as any).id);
+      const merged = prev
+        ? {
+            ...prev,
+            ...order,
+            // Pertahankan detail kaya dari cache bila payload daftar tak membawanya.
+            checklist: (order as any).checklist ?? prev.checklist,
+            review: (order as any).review ?? prev.review,
+            template_name: (order as any).template_name ?? prev.template_name,
+          }
+        : order;
+      store.put(merged);
     });
 
     transaction.oncomplete = () => resolve();
@@ -273,24 +297,13 @@ export async function syncOfflineData(): Promise<{ successCount: number; failedC
             status: update.status,
             vehicle: update.vehicle,
             checklist: update.checklist,
+            // Catatan ringkasan ikut dikirim di sini. (Sebelumnya hilang karena
+            // dikirim ke endpoint review yang tidak punya handler POST.)
+            notes: update.summaryNotes,
           }),
         });
 
         if (res.ok) {
-          // Jika statusnya pending_review, kirim juga review submit
-          if (update.status === "pending_review") {
-            await fetch(`/api/admin/orders/${update.orderId}/review`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                status: "pending_review",
-                notes: update.summaryNotes || "",
-              }),
-            });
-          }
-
           await removeQueuedUpdate(update.orderId);
           successCount++;
           console.log(`[Offline Sync] Sinkronisasi sukses untuk order: ${update.orderId}`);

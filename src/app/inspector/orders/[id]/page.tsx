@@ -76,7 +76,13 @@ export default function InspectorOrderDetailPage({ params }: { params: Promise<{
     }
 
     // Navigate sekarang. PUT server jalan di background.
-    router.push(`/inspector/orders/${id}/inspect`);
+    // Order yang sudah berjalan langsung ke checklist (lanjut dari terakhir);
+    // order baru mulai dari langkah Data Mobil.
+    const destination =
+      order.status === "in_progress"
+        ? `/inspector/orders/${id}/inspect/checklist`
+        : `/inspector/orders/${id}/inspect`;
+    router.push(destination);
     setUpdating(false);
 
     void (async () => {

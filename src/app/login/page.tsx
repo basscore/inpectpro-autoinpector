@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Shield, Car } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -68,18 +68,11 @@ export default function LoginPage() {
       <div className="relative z-10 w-full max-w-md mx-4 animate-fade-in">
         {/* Logo & Branding */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-accent rounded-2xl shadow-lg shadow-accent/30 mb-5 relative">
-            <Car className="w-8 h-8 text-white" strokeWidth={2.5} />
-            <div className="absolute -top-1 -right-1 w-5 h-5 bg-success rounded-full flex items-center justify-center border-2 border-primary-dark">
-              <Shield className="w-3 h-3 text-white" />
-            </div>
-          </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">
-            InpectPro
-          </h1>
-          <p className="text-sm text-slate-400 mt-2">
-            Inspeksi Otomotif Profesional
-          </p>
+          <img
+            src="/brand/logo-full.svg"
+            alt="InpectPro"
+            className="w-56 h-auto mx-auto drop-shadow-lg"
+          />
         </div>
 
         {/* Card */}

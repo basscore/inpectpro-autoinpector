@@ -20,6 +20,7 @@ import {
   ImageIcon,
   Car,
   Pencil,
+  Search,
 } from "lucide-react";
 
 const STATUS_OPTIONS: { value: "ok" | "attention" | "problem" | "na"; label: string; color: string; bg: string; ring: string }[] = [
@@ -92,6 +93,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const [summary, setSummary] = useState("");
   const [recommendation, setRecommendation] = useState("");
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+  const [itemSearch, setItemSearch] = useState("");
 
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -651,12 +653,65 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
       {/* Editor Kategori & Item */}
       <div className="space-y-3">
-        <h3 className="text-base font-bold text-text-primary px-1">
-          Detail Item Pemeriksaan
-        </h3>
-        {categories.map((category) => {
-          const isExpanded = expandedCategories.includes(category.id);
+        <div className="flex items-center justify-between gap-3 flex-wrap px-1">
+          <h3 className="text-base font-bold text-text-primary">
+            Detail Item Pemeriksaan
+          </h3>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary pointer-events-none" />
+            <input
+              type="text"
+              value={itemSearch}
+              onChange={(e) => setItemSearch(e.target.value)}
+              placeholder="Cari item inspeksi..."
+              className="w-full pl-9 pr-9 py-2 bg-white border border-border rounded-xl text-sm text-text-primary placeholder:text-text-tertiary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all"
+            />
+            {itemSearch && (
+              <button
+                onClick={() => setItemSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-secondary transition-colors cursor-pointer"
+                aria-label="Hapus pencarian"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+        {(() => {
+          const normalizedItemSearch = itemSearch.trim().toLowerCase();
+          const isItemSearching = normalizedItemSearch.length > 0;
+          const matchedCount = isItemSearching
+            ? categories.reduce(
+                (acc, cat) =>
+                  acc +
+                  (cat.items || []).filter(
+                    (it) =>
+                      it.name?.toLowerCase().includes(normalizedItemSearch) ||
+                      (it.notes || "").toLowerCase().includes(normalizedItemSearch)
+                  ).length,
+                0
+              )
+            : 0;
+          if (isItemSearching && matchedCount === 0) {
+            return (
+              <div className="bg-white rounded-2xl border border-dashed border-border p-8 text-center">
+                <Search className="w-8 h-8 text-text-tertiary mx-auto mb-2" />
+                <p className="text-sm text-text-secondary">Tidak ada item yang cocok</p>
+                <p className="text-xs text-text-tertiary mt-1">Coba kata kunci lain.</p>
+              </div>
+            );
+          }
+          return categories.map((category) => {
           const catItems = category.items || [];
+          const visibleItems = isItemSearching
+            ? catItems.filter(
+                (it) =>
+                  it.name?.toLowerCase().includes(normalizedItemSearch) ||
+                  (it.notes || "").toLowerCase().includes(normalizedItemSearch)
+              )
+            : catItems;
+          if (isItemSearching && visibleItems.length === 0) return null;
+          const isExpanded = isItemSearching || expandedCategories.includes(category.id);
           const catOk = catItems.filter((i) => i.status === "ok").length;
           const catIssues = catItems.filter(
             (i) => i.status === "attention" || i.status === "problem"
@@ -718,12 +773,12 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
               {isExpanded && (
                 <div className="border-t border-border-light divide-y divide-border-light bg-slate-50/30">
-                  {catItems.length === 0 && (
+                  {visibleItems.length === 0 && (
                     <div className="px-6 py-8 text-center text-sm text-text-tertiary">
                       Belum ada item di kategori ini.
                     </div>
                   )}
-                  {catItems.map((item) => {
+                  {visibleItems.map((item) => {
                     const selectedStatus = item.status;
                     return (
                       <div key={item.id} className="px-6 py-5 space-y-3">
@@ -843,7 +898,8 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               )}
             </div>
           );
-        })}
+          });
+        })()}
 
         {categories.length === 0 && (
           <div className="bg-white rounded-2xl border border-border p-8 text-center text-sm text-text-secondary">

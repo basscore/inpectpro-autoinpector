@@ -12,8 +12,6 @@ import {
   LogOut,
   Menu,
   X,
-  Car,
-  Shield,
   Bell,
   ChevronDown,
 } from "lucide-react";
@@ -110,17 +108,18 @@ export default function AdminLayout({
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-6 h-16 border-b border-white/10">
-          <div className="w-9 h-9 bg-accent rounded-xl flex items-center justify-center shadow-md shadow-accent/30 relative">
-            <Car className="w-5 h-5 text-white" strokeWidth={2.5} />
-            <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-success rounded-full flex items-center justify-center border border-primary-dark">
-              <Shield className="w-2 h-2 text-white" />
-            </div>
-          </div>
+          <img
+            src="/brand/logogram.svg"
+            alt=""
+            className="w-9 h-9 flex-shrink-0"
+          />
           <div>
-            <span className="text-white font-bold text-lg tracking-tight">
-              InpectPro
-            </span>
-            <span className="block text-[10px] text-slate-400 -mt-0.5 uppercase tracking-widest">
+            <img
+              src="/brand/logotype.svg"
+              alt="InpectPro"
+              className="h-4 w-auto"
+            />
+            <span className="block text-[10px] text-slate-400 mt-1 uppercase tracking-widest">
               {role === "inspector" ? "Inspektor" : "Super Admin"}
             </span>
           </div>

@@ -2,9 +2,10 @@
 
 import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Camera, WifiOff, Save } from "lucide-react";
+import { ArrowLeft, ArrowRight, Camera, WifiOff, Save, X } from "lucide-react";
 import { saveOfflineOrderDetail, queueOfflineUpdate, loadOrderDetailCacheFirst } from "@/lib/offline-db";
 import { TopProgressBar, OrderDetailSkeleton } from "@/lib/ui";
+import { compressImage } from "@/lib/image-compress";
 
 export default function InspectVehicleDataPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -27,6 +28,8 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
   const [color, setColor] = useState("");
   const [transmission, setTransmission] = useState("automatic");
   const [fuelType, setFuelType] = useState("bensin");
+  const [odometerPhoto, setOdometerPhoto] = useState("");
+  const [uploadingOdo, setUploadingOdo] = useState(false);
   // Saat user mulai mengetik di form, jangan timpa nilainya dengan respons network revalidate.
   const formDirtyRef = useRef(false);
   const markFormDirty = () => {
@@ -62,6 +65,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
       setColor(orderData.vehicle.color || "");
       setTransmission(orderData.vehicle.transmission || "automatic");
       setFuelType(orderData.vehicle.fuel_type || "bensin");
+      setOdometerPhoto(orderData.vehicle.odometer_photo || "");
     };
     (async () => {
       await loadOrderDetailCacheFirst(id, (orderData) => {
@@ -89,6 +93,7 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
       chassis_number: chassisNumber.toUpperCase(),
       engine_number: engineNumber.toUpperCase(),
       odometer_km: parseInt(odometerKm) || 0,
+      odometer_photo: odometerPhoto,
       color,
       transmission,
       fuel_type: fuelType,
@@ -129,6 +134,29 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
         console.error("Background PUT vehicle gagal — data aman di queue:", err);
       }
     })();
+  };
+
+  const handleUploadOdometer = async (file: File) => {
+    setUploadingOdo(true);
+    try {
+      const compressed = await compressImage(file);
+      const form = new FormData();
+      form.append("file", compressed);
+      form.append("orderId", id);
+      form.append("itemId", "odometer");
+
+      const res = await fetch("/api/inspector/upload", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.url) {
+        throw new Error(data.error || "Gagal upload");
+      }
+      markFormDirty();
+      setOdometerPhoto(data.url);
+    } catch (err: any) {
+      alert(`Upload foto odometer gagal: ${err.message || err}`);
+    } finally {
+      setUploadingOdo(false);
+    }
   };
 
   if (loading) {
@@ -279,14 +307,44 @@ export default function InspectVehicleDataPage({ params }: { params: Promise<{ i
                 onChange={(e) => { markFormDirty(); setOdometerKm(e.target.value); }}
                 className="flex-1 px-3 py-2.5 bg-surface-secondary border border-border rounded-xl text-sm text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/10 outline-none transition-all"
               />
-              <button
-                type="button"
-                className="flex items-center gap-2 px-4 py-2.5 bg-primary/5 border border-border rounded-xl text-sm text-primary font-medium hover:bg-primary/10 transition-colors cursor-pointer"
+              <label
+                className={`flex items-center gap-2 px-4 py-2.5 bg-primary/5 border border-border rounded-xl text-sm text-primary font-medium transition-colors ${
+                  uploadingOdo ? "opacity-60 cursor-wait" : "hover:bg-primary/10 cursor-pointer"
+                }`}
               >
                 <Camera className="w-4 h-4" />
-                Foto
-              </button>
+                {uploadingOdo ? "Mengunggah..." : odometerPhoto ? "Ganti" : "Foto"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  disabled={uploadingOdo}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleUploadOdometer(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
             </div>
+            {odometerPhoto && (
+              <div className="relative mt-3 inline-block">
+                <img
+                  src={odometerPhoto}
+                  alt="Foto odometer"
+                  className="w-24 h-24 rounded-xl object-cover border border-border"
+                />
+                <button
+                  type="button"
+                  onClick={() => { markFormDirty(); setOdometerPhoto(""); }}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-danger text-white rounded-full flex items-center justify-center shadow-md cursor-pointer"
+                  aria-label="Hapus foto odometer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
