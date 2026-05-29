@@ -210,9 +210,9 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
       >
 
         {/* Halaman 1: Cover / Ringkasan Utama Laporan */}
-        <section className="space-y-8 pb-10 print:pb-0">
+        <section className="space-y-8 pb-10 print:pb-0 print:space-y-3">
           {/* Cover Header */}
-          <div className="flex items-start justify-between border-b border-slate-200 pb-6">
+          <div className="flex items-start justify-between border-b border-slate-200 pb-6 print:pb-3">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-primary-dark rounded-2xl flex items-center justify-center shadow-md shadow-primary/20 p-2.5">
                 <img src="/brand/logogram.svg" alt="" className="w-full h-full" />
@@ -237,9 +237,9 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
           </div>
 
           {/* Banner & Cover Title — versi terang */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6 relative overflow-hidden">
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 sm:p-8 print:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-6 print:gap-4 relative overflow-hidden">
             <span className="absolute left-0 top-0 bottom-0 w-1.5 bg-accent" />
-            <div className="relative z-10 space-y-2 pl-2">
+            <div className="relative z-10 space-y-2 print:space-y-1 pl-2">
               <span className="text-[10px] text-accent font-extrabold uppercase tracking-widest">
                 Laporan Resmi
               </span>
@@ -251,11 +251,11 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
               </p>
             </div>
             {order.review && (
-              <div className="flex-shrink-0 flex flex-col items-center justify-center bg-white rounded-2xl px-6 py-4 border border-slate-200 shadow-sm text-center min-w-[140px]">
+              <div className="flex-shrink-0 flex flex-col items-center justify-center bg-white rounded-2xl px-6 py-4 print:py-2 border border-slate-200 shadow-sm text-center min-w-[140px]">
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                   Skor Penilaian
                 </span>
-                <span className={`text-4xl sm:text-5xl font-black mt-1 ${scoreTone}`}>
+                <span className={`text-4xl sm:text-5xl print:text-4xl font-black mt-1 ${scoreTone}`}>
                   {order.review.overall_score}
                 </span>
                 <span className={`text-[9px] font-bold mt-1 uppercase tracking-widest ${scoreTone}`}>
@@ -266,13 +266,13 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
           </div>
 
           {/* Data Kendaraan & Klien */}
-          <div className="grid md:grid-cols-2 gap-6 pt-2">
+          <div className="grid md:grid-cols-2 gap-6 pt-2 print:gap-3 print:pt-0">
             {/* Spesifikasi Kendaraan */}
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-4">
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-2 flex items-center gap-2">
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-4 print:p-4 print:space-y-2">
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-2 print:pb-1.5 flex items-center gap-2">
                 <Car className="w-4 h-4 text-slate-500" /> Spesifikasi Mobil
               </h3>
-              <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="grid grid-cols-2 gap-3 text-xs print:gap-x-3 print:gap-y-1.5">
                 <div>
                   <p className="text-slate-400 uppercase text-[9px] tracking-wider">Merk & Model</p>
                   <p className="font-bold text-slate-900 mt-0.5">{order.vehicle.brand} {order.vehicle.model}</p>
@@ -309,11 +309,11 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
             </div>
 
             {/* Administrasi & Pihak Terkait */}
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-4">
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-2 flex items-center gap-2">
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-4 print:p-4 print:space-y-2">
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider border-b border-slate-200 pb-2 print:pb-1.5 flex items-center gap-2">
                 <User className="w-4 h-4 text-slate-500" /> Detail Pemesanan
               </h3>
-              <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="grid grid-cols-2 gap-3 text-xs print:gap-x-3 print:gap-y-1.5">
                 <div>
                   <p className="text-slate-400 uppercase text-[9px] tracking-wider">Nama Klien</p>
                   <p className="font-bold text-slate-900 mt-0.5">{order.client.name}</p>
@@ -348,20 +348,20 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
           </div>
 
           {/* Temuan Ringkasan Checklist */}
-          <div className="grid grid-cols-4 gap-3">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl py-3 px-2 text-center">
+          <div className="grid grid-cols-4 gap-3 print:gap-2">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl py-3 px-2 print:py-2 text-center">
               <span className="block text-xl font-extrabold text-emerald-700">{okCount}</span>
               <span className="text-[9px] uppercase tracking-wider font-bold text-emerald-600/80">Kondisi Baik</span>
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl py-3 px-2 text-center">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl py-3 px-2 print:py-2 text-center">
               <span className="block text-xl font-extrabold text-amber-600">{attentionCount}</span>
               <span className="text-[9px] uppercase tracking-wider font-bold text-amber-600/80">Perhatian</span>
             </div>
-            <div className="bg-red-50 border border-red-200 rounded-xl py-3 px-2 text-center">
+            <div className="bg-red-50 border border-red-200 rounded-xl py-3 px-2 print:py-2 text-center">
               <span className="block text-xl font-extrabold text-red-600">{problemCount}</span>
               <span className="text-[9px] uppercase tracking-wider font-bold text-red-600/80">Bermasalah</span>
             </div>
-            <div className="bg-slate-50 border border-slate-200 rounded-xl py-3 px-2 text-center">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl py-3 px-2 print:py-2 text-center">
               <span className="block text-xl font-extrabold text-slate-500">{naCount}</span>
               <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">N/A</span>
             </div>
@@ -369,11 +369,11 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
 
           {/* Kesimpulan Review Admin — versi terang */}
           {order.review && (
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-4 print:break-inside-avoid">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-accent border-b border-slate-200 pb-2">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-4 print:p-4 print:space-y-2 print:break-inside-avoid">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-accent border-b border-slate-200 pb-2 print:pb-1.5">
                 Ringkasan & Analisis Temuan
               </h3>
-              <div className="space-y-3 text-xs leading-relaxed">
+              <div className="space-y-3 text-xs leading-relaxed print:space-y-2">
                 <div>
                   <p className="text-slate-500 font-bold">Catatan Hasil Review:</p>
                   <p className="text-slate-800 mt-1">{order.review.summary}</p>
