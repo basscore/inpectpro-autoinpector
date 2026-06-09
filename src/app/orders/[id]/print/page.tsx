@@ -13,6 +13,7 @@ import {
   Shield,
   Layers,
 } from "lucide-react";
+import { scoreToGrade, gradeLabel, gradeTone } from "@/lib/grade";
 
 interface ChecklistItem {
   id: string;
@@ -176,10 +177,9 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
   });
 
   const score = order.review?.overall_score ?? 0;
-  const scoreLabel =
-    score >= 85 ? "Kondisi Prima" : score >= 70 ? "Kondisi Baik" : score >= 50 ? "Perlu Perhatian" : "Perlu Perbaikan";
-  const scoreTone =
-    score >= 70 ? "text-emerald-600" : score >= 50 ? "text-amber-600" : "text-red-600";
+  const scoreGrade = scoreToGrade(score);
+  const scoreLabel = gradeLabel(score);
+  const scoreTone = gradeTone(score);
 
   return (
     <div className="min-h-screen bg-slate-100 py-6 px-4 sm:px-6 md:py-10 md:px-8 print:bg-white print:p-0 print:m-0">
@@ -253,10 +253,10 @@ export default function PrintReportPage({ params }: { params: Promise<{ id: stri
             {order.review && (
               <div className="flex-shrink-0 flex flex-col items-center justify-center bg-white rounded-2xl px-6 py-4 print:py-2 border border-slate-200 shadow-sm text-center min-w-[140px]">
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                  Skor Penilaian
+                  Grade Penilaian
                 </span>
                 <span className={`text-4xl sm:text-5xl print:text-4xl font-black mt-1 ${scoreTone}`}>
-                  {order.review.overall_score}
+                  {scoreGrade}
                 </span>
                 <span className={`text-[9px] font-bold mt-1 uppercase tracking-widest ${scoreTone}`}>
                   {scoreLabel}

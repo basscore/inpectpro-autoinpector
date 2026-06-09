@@ -22,6 +22,7 @@ import {
   Pencil,
   Search,
 } from "lucide-react";
+import { GRADES, scoreToGrade, gradeToScore } from "@/lib/grade";
 
 const STATUS_OPTIONS: { value: "ok" | "attention" | "problem" | "na"; label: string; color: string; bg: string; ring: string }[] = [
   { value: "ok", label: "OK", color: "text-success", bg: "bg-success-bg", ring: "ring-success" },
@@ -602,23 +603,34 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         <div className="p-6 space-y-5">
           <div>
             <label className="block text-sm font-medium text-text-primary mb-3">
-              Skor Penilaian Keseluruhan
+              Grade Penilaian Keseluruhan
             </label>
             <div className="flex items-center gap-4">
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={score}
-                onChange={(e) => setScore(Number(e.target.value))}
-                className="flex-1 accent-accent cursor-pointer"
-              />
+              <div className="flex flex-wrap gap-2 flex-1">
+                {GRADES.map(({ grade }) => {
+                  const active = scoreToGrade(score) === grade;
+                  return (
+                    <button
+                      key={grade}
+                      type="button"
+                      onClick={() => setScore(gradeToScore(grade))}
+                      className={`min-w-[3.25rem] px-3 py-2.5 rounded-xl font-bold text-sm border transition-all cursor-pointer ${
+                        active
+                          ? "bg-accent text-white border-accent shadow-sm"
+                          : "bg-surface-secondary text-text-secondary border-border hover:border-accent/50 hover:text-text-primary"
+                      }`}
+                    >
+                      {grade}
+                    </button>
+                  );
+                })}
+              </div>
               <div
-                className={`w-16 h-16 rounded-2xl flex items-center justify-center font-bold text-xl text-white flex-shrink-0 ${
+                className={`w-16 h-16 rounded-2xl flex items-center justify-center font-bold text-2xl text-white flex-shrink-0 ${
                   score >= 80 ? "bg-success" : score >= 60 ? "bg-warning" : "bg-danger"
                 }`}
               >
-                {score}
+                {scoreToGrade(score)}
               </div>
             </div>
           </div>
